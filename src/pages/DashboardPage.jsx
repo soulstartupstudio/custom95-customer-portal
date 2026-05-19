@@ -64,7 +64,7 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         supabase.from('proposals').select('id, proposal_number, name, status, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(3),
         supabase.from('quotes').select('id, status, total_cents, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(3),
         supabase.from('design_tasks').select('id, title, status, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(3),
-        supabase.from('projects').select('id, project_number, name, stage, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(3),
+        supabase.from('projects').select('id, project_number, name, stage, created_at, proposals!projects_proposal_id_fkey(proposal_number)').eq('company_id', company.id).order('created_at', { ascending: false }).limit(3),
         supabase.from('companies').select('am_user_id').eq('id', company.id).single(),
       ])
       if (cancelled) return
@@ -73,7 +73,10 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         ...(recentProp.data ?? []).map((r) => ({ type: 'proposal', id: r.id, title: r.name || `Proposal #${r.proposal_number}`, subtitle: `#${r.proposal_number}`, status: r.status, date: r.created_at, tab: 'proposals' })),
         ...(recentQuote.data ?? []).map((r) => ({ type: 'quote', id: r.id, title: `Quote ${formatCents(r.total_cents)}`, status: r.status, date: r.created_at, tab: 'quotes' })),
         ...(recentDesign.data ?? []).map((r) => ({ type: 'design', id: r.id, title: r.title, status: r.status, date: r.created_at, tab: 'designs' })),
-        ...(recentProj.data ?? []).map((r) => ({ type: 'project', id: r.id, title: r.name || `Project #${r.project_number}`, subtitle: `#${r.project_number}`, status: r.stage, date: r.created_at, tab: 'projects' })),
+        ...(recentProj.data ?? []).map((r) => {
+          const num = r.proposals?.proposal_number ?? r.project_number
+          return { type: 'project', id: r.id, title: r.name || `Project #${num}`, subtitle: `#${num}`, status: r.stage, date: r.created_at, tab: 'projects' }
+        }),
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)
 
       let amData = null

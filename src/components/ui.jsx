@@ -45,6 +45,34 @@ export function Card({ title, action, children, className = '' }) {
   )
 }
 
+const SECTION_TONES = {
+  gray: { bg: 'bg-white border-gray-200', icon: 'text-gray-500 bg-gray-100' },
+  blue: { bg: 'bg-blue-50/40 border-blue-100', icon: 'text-blue-600 bg-blue-100' },
+  green: { bg: 'bg-green-50/40 border-green-100', icon: 'text-green-600 bg-green-100' },
+  purple: { bg: 'bg-purple-50/40 border-purple-100', icon: 'text-purple-600 bg-purple-100' },
+  amber: { bg: 'bg-amber-50/40 border-amber-100', icon: 'text-amber-600 bg-amber-100' },
+}
+
+export function SectionBlock({ icon: Icon, title, action, children, tone = 'gray' }) {
+  const t = SECTION_TONES[tone] || SECTION_TONES.gray
+  return (
+    <div className={`rounded-xl border ${t.bg} overflow-hidden`}>
+      <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100 bg-white/60">
+        <div className="flex items-center gap-2">
+          {Icon && (
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.icon}`}>
+              <Icon size={14} />
+            </div>
+          )}
+          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        </div>
+        {action}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  )
+}
+
 export function PageHeader({ title, subtitle, action }) {
   return (
     <div className="flex items-start justify-between flex-wrap gap-4">
@@ -117,6 +145,29 @@ export function SecondaryButton({ children, onClick, type = 'button', disabled =
 export function formatCents(cents) {
   if (cents == null) return '—'
   return '€' + (cents / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+/**
+ * Mirrors the team app's quote math.
+ * Stored `subtotal_cents` is (line items subtotal − discount + delivery).
+ * Returns derived parts for transparent customer display.
+ */
+export function deriveQuoteBreakdown(quote, lineItems = []) {
+  const items_subtotal = lineItems.reduce((s, li) => s + (li.total_sales_cents || 0), 0)
+  const delivery = quote.delivery_cost_cents || 0
+  const stored_subtotal = quote.subtotal_cents || 0
+  const after_discount = Math.max(0, stored_subtotal - delivery)
+  const discount = Math.max(0, items_subtotal - after_discount)
+  return {
+    items_subtotal,
+    discount,
+    delivery,
+    after_discount,
+    subtotal: stored_subtotal,
+    vat_rate: quote.vat_rate,
+    vat: quote.vat_amount_cents || 0,
+    total: quote.total_cents || 0,
+  }
 }
 
 export function formatDate(dateStr) {

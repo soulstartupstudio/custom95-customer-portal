@@ -7,7 +7,7 @@ import { Paperclip, Plus, X, Upload, FileText, Check } from 'lucide-react'
  * User can add/remove attachments; additions write to design_task_assets.
  * Picker draws from the company-wide brand_assets library.
  */
-export default function DesignAttachments({ design, company, contact }) {
+export default function DesignAttachments({ design, company, contact, readOnly = false }) {
   const [attached, setAttached] = useState([]) // [{ id, brand_asset_id, brand_asset, signed_url }]
   const [library, setLibrary] = useState([])
   const [librarySigned, setLibrarySigned] = useState({})
@@ -101,10 +101,10 @@ export default function DesignAttachments({ design, company, contact }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          <Paperclip size={14} className="text-gray-400" />Attached to this design
+          <Paperclip size={14} className="text-gray-400" />Your attached assets
           {attached.length > 0 && <span className="text-xs text-gray-400 font-normal">· {attached.length}</span>}
         </div>
-        {!picking && (
+        {!readOnly && !picking && (
           <button
             onClick={() => setPicking(true)}
             className="text-xs font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
@@ -118,7 +118,9 @@ export default function DesignAttachments({ design, company, contact }) {
         <div className="text-xs text-gray-400">Loading…</div>
       ) : attached.length === 0 && !picking ? (
         <div className="text-xs text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded">
-          Nothing attached yet. Upload a logo or pick from your brand library.
+          {readOnly
+            ? "You haven't attached any assets to this design."
+            : "You haven't attached any of your brand assets yet. Click Attach to pick from your library or upload new."}
         </div>
       ) : (
         <div className="grid grid-cols-4 gap-2">
@@ -136,13 +138,15 @@ export default function DesignAttachments({ design, company, contact }) {
                   )}
                 </div>
                 <div className="px-1.5 py-1 text-[10px] text-gray-700 truncate bg-white">{ba.name}</div>
-                <button
-                  onClick={() => detach(a.id)}
-                  className="absolute top-1 right-1 w-5 h-5 bg-white/90 hover:bg-red-50 text-gray-500 hover:text-red-600 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remove attachment"
-                >
-                  <X size={11} />
-                </button>
+                {!readOnly && (
+                  <button
+                    onClick={() => detach(a.id)}
+                    className="absolute top-1 right-1 w-5 h-5 bg-white/90 hover:bg-red-50 text-gray-500 hover:text-red-600 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove attachment"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
               </div>
             )
           })}

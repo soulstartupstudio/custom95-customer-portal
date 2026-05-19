@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Building2, MapPin, User, Mail, Phone, Hash, Calendar, Sparkles, Image as ImageIcon, Plus, Pencil } from 'lucide-react'
-import { Card, Badge, Field, Spinner, PageHeader, PrimaryButton } from '../components/ui'
-import BrandAssetsSection from '../components/BrandAssetsSection'
+import { Building2, MapPin, User, Mail, Phone, Hash, Calendar, Sparkles, Plus, Pencil } from 'lucide-react'
+import { Card, Badge, Field, Spinner, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 import AddressEditor from '../components/AddressEditor'
+import ContactEditor from '../components/ContactEditor'
 
 const PLAN_LABELS = { starter: 'Starter', growth: 'Growth', scale: 'Scale', enterprise: 'Enterprise' }
 
@@ -57,8 +57,9 @@ export default function SettingsPage({ company, contact }) {
   const [addresses, setAddresses] = useState([])
   const [am, setAm] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('account')
   const [editingAddr, setEditingAddr] = useState(null) // address object, 'new', or null
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [me, setMe] = useState(contact)
 
   useEffect(() => {
     if (!company?.id) return
@@ -104,28 +105,39 @@ export default function SettingsPage({ company, contact }) {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        subtitle="Your account info and brand assets."
+        subtitle="Your company details and account manager."
       />
 
-      <div className="flex gap-1 border-b border-gray-200">
-        {[
-          { id: 'account', label: 'Account' },
-          { id: 'brand', label: 'Brand assets' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t.id ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent hover:text-gray-700'
-            }`}
+      <div className="space-y-6">
+          {/* Your profile */}
+          <Card
+            title="Your profile"
+            action={
+              <button
+                onClick={() => setEditingProfile(true)}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+              >
+                <Pencil size={12} />Edit
+              </button>
+            }
           >
-            {t.label}
-          </button>
-        ))}
-      </div>
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-base font-semibold overflow-hidden flex-shrink-0">
+                {me?.profile_image_url
+                  ? <img src={me.profile_image_url} alt="" className="w-full h-full object-cover" />
+                  : ([me?.first_name, me?.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase() || <User size={20} />)}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">{me?.first_name} {me?.last_name}</div>
+                {me?.role && <div className="text-xs text-gray-500">{me.role}</div>}
+                <div className="text-xs text-gray-500 mt-1">
+                  {me?.email && <span className="inline-flex items-center gap-1 mr-3"><Mail size={11} />{me.email}</span>}
+                  {me?.phone && <span className="inline-flex items-center gap-1"><Phone size={11} />{me.phone}</span>}
+                </div>
+              </div>
+            </div>
+          </Card>
 
-      {tab === 'account' && (
-        <div className="space-y-6">
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
               <div className="flex items-center gap-3 mb-1">
@@ -235,19 +247,16 @@ export default function SettingsPage({ company, contact }) {
               )}
             </div>
           </Card>
-        </div>
-      )}
+      </div>
 
-      {tab === 'brand' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="mb-4">
-            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <ImageIcon size={16} className="text-gray-400" />Brand assets
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Your logos, fonts, guidelines, and photos. Reuse them when submitting design briefs.</p>
-          </div>
-          <BrandAssetsSection company={company} contact={contact} />
-        </div>
+      {editingProfile && (
+        <ContactEditor
+          company={company}
+          contact={me}
+          title="Edit your profile"
+          onCancel={() => setEditingProfile(false)}
+          onSaved={(saved) => { setMe(saved); setEditingProfile(false) }}
+        />
       )}
     </div>
   )

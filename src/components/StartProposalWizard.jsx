@@ -597,16 +597,33 @@ function TeamPicker({ company, contact, selectedIds, onChange }) {
 }
 
 // --- MAIN WIZARD ---
-export default function StartProposalWizard({ company, contact, onClose, onCreated }) {
-  const [step, setStep] = useState(0)
+export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem }) {
+  const [step, setStep] = useState(prefillItem ? 0 : 0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [itemMode, setItemMode] = useState('catalogue')
-  const [items, setItems] = useState([])
+  const [items, setItems] = useState(() => {
+    if (!prefillItem) return []
+    const item = prefillItem.catalogue_item
+    return [{
+      type: 'catalogue',
+      catalogue_item_id: item.id,
+      description: item.name,
+      category: item.category,
+      photo_url: prefillItem.photo_url || item.main_photo_url,
+      quantity: prefillItem.quantity || item.moq_sales || 50,
+      reference_url: null,
+      notes: prefillItem.notes || null,
+      tiers: prefillItem.tiers || [],
+      colour_choice: prefillItem.colour_choice || null,
+      size_choice: prefillItem.size_choice || null,
+      shipping_method: prefillItem.shipping_method || null,
+    }]
+  })
   const [addressIds, setAddressIds] = useState([])
   const [teamIds, setTeamIds] = useState(contact?.id ? [contact.id] : [])
   const [form, setForm] = useState({
-    name: '',
+    name: prefillItem?.catalogue_item ? `${prefillItem.catalogue_item.name} project` : '',
     occasion: '',
     occasion_other: '',
     brief_notes: '',
@@ -705,6 +722,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         quantity: it.quantity || null,
         reference_url: it.reference_url,
         notes: it.notes,
+        colour_choice: it.colour_choice || null,
+        size_choice: it.size_choice || null,
+        shipping_method: it.shipping_method || null,
         requested_by_contact_id: contact.id,
       }))
       const { error: itemsErr } = await supabase.from('proposal_requested_items').insert(rows)

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { Palette } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, SecondaryButton } from '../components/ui'
 import DesignDrawer from '../components/DesignDrawer'
+import { fetchDesignMockupUrls } from '../lib/designThumbnails'
 
 function DesignCard({ design, onClick }) {
   const img = design.display_image
@@ -14,7 +15,7 @@ function DesignCard({ design, onClick }) {
         ) : (
           <Palette size={32} className="text-gray-300" />
         )}
-        {img && !design.latest_file_url && (
+        {img && !design.has_mockup && (
           <div className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1.5 py-0.5 rounded">Reference</div>
         )}
       </div>
@@ -61,12 +62,19 @@ export default function DesignsPage({ company, contact, deepLinkId, clearDeepLin
         .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       if (cancelled) return
+
+      // Pull the latest signed mockup URL per design (preferred over fallbacks).
+      const mockupUrls = await fetchDesignMockupUrls((data ?? []).map((d) => d.id))
+      if (cancelled) return
+
       const enriched = (data ?? []).map((d) => ({
         ...d,
-        display_image: d.latest_file_url
+        display_image: mockupUrls[d.id]
+          || d.latest_file_url
           || d.proposal_requested_items?.reference_url
           || d.proposal_requested_items?.catalogue_items?.main_photo_url
           || null,
+        has_mockup: !!mockupUrls[d.id],
       }))
       setRows(enriched)
       setLoading(false)

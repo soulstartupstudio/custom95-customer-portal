@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
-  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus
+  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles
 } from 'lucide-react'
 import DashboardPage from '../pages/DashboardPage'
 import SettingsPage from '../pages/SettingsPage'
@@ -14,7 +14,9 @@ import WarehousePage from '../pages/WarehousePage'
 import CataloguePage from '../pages/CataloguePage'
 import ContactsPage from '../pages/ContactsPage'
 import BrandshopPage from '../pages/BrandshopPage'
+import BrandPage from '../pages/BrandPage'
 import StartProposalWizard from './StartProposalWizard'
+import WhatsAppButton from './WhatsAppButton'
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -22,22 +24,25 @@ const tabs = [
   { id: 'quotes', label: 'Quotes', icon: Receipt },
   { id: 'designs', label: 'Designs', icon: Palette },
   { id: 'projects', label: 'Projects', icon: FolderKanban },
+  { id: 'brand', label: 'Brand', icon: Sparkles },
   { id: 'brandshop', label: 'Brandshop', icon: Store, requiresBrandshop: true },
   { id: 'warehouse', label: 'Warehouse', icon: Warehouse },
   { id: 'catalogue', label: 'Catalogue', icon: BookOpen },
-  { id: 'contacts', label: 'Contacts', icon: Users },
+  { id: 'contacts', label: 'Team', icon: Users },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
 
 export default function Layout({ session, contact, company }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
   const [refreshKey, setRefreshKey] = useState(0)
   const [deepLink, setDeepLink] = useState(null) // { tab, id }
 
   const visibleTabs = tabs.filter((t) => !t.requiresBrandshop || company?.brandshop_addon)
 
-  const openWizard = () => setWizardOpen(true)
+  const openWizard = () => { setWizardPrefill(null); setWizardOpen(true) }
+  const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardOpen(true) }
 
   const navigateTo = (tab, id) => {
     setDeepLink(id ? { tab, id } : null)
@@ -53,9 +58,10 @@ export default function Layout({ session, contact, company }) {
       case 'quotes': return <QuotesPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('quotes')} clearDeepLink={clearDeepLink} />
       case 'designs': return <DesignsPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('designs')} clearDeepLink={clearDeepLink} />
       case 'projects': return <ProjectsPage company={company} contact={contact} deepLinkId={linkId('projects')} clearDeepLink={clearDeepLink} />
-      case 'brandshop': return <BrandshopPage company={company} />
+      case 'brand': return <BrandPage company={company} contact={contact} />
+      case 'brandshop': return <BrandshopPage company={company} contact={contact} />
       case 'warehouse': return <WarehousePage company={company} contact={contact} />
-      case 'catalogue': return <CataloguePage company={company} />
+      case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} />
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
       default: return null
@@ -124,14 +130,18 @@ export default function Layout({ session, contact, company }) {
         </div>
       </main>
 
+      <WhatsAppButton url={company?.whatsapp_group_url} />
+
       {wizardOpen && (
         <StartProposalWizard
           company={company}
           contact={contact}
-          onClose={() => setWizardOpen(false)}
+          prefillItem={wizardPrefill}
+          onClose={() => { setWizardOpen(false); setWizardPrefill(null) }}
           onCreated={() => {
             setRefreshKey((k) => k + 1)
             setActiveTab('proposals')
+            setWizardPrefill(null)
           }}
         />
       )}

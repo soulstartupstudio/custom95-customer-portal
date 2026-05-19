@@ -1,0 +1,512 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import {
+  X, Package, Leaf, Search, Plus, Check, Truck, Zap, Wallet, Clock, Image as ImageIcon,
+  ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star,
+} from 'lucide-react'
+import { Badge, PrimaryButton, SecondaryButton, formatCents, formatDate } from './ui'
+
+const SHIPPING_LABELS = {
+  express: { label: 'Express', icon: Zap, tone: 'bg-purple-50 border-purple-200 text-purple-900', accent: 'text-purple-700' },
+  standard: { label: 'Standard', icon: Truck, tone: 'bg-blue-50 border-blue-200 text-blue-900', accent: 'text-blue-700' },
+  budget: { label: 'Budget', icon: Wallet, tone: 'bg-gray-50 border-gray-200 text-gray-900', accent: 'text-gray-700' },
+}
+
+function getTierPrice(tiers, qty) {
+  if (!tiers?.length || !qty) return null
+  for (const t of tiers) {
+    const from = t.qty_from ?? 0
+    const to = t.qty_to ?? Infinity
+    if (qty >= from && qty <= to) return t.sales_price_cents
+  }
+  const sorted = [...tiers].sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
+  if (sorted.length && qty < (sorted[0].qty_from ?? 0)) return sorted[0].sales_price_cents
+  return null
+}
+
+function shippingCost(item, method, qty) {
+  if (!item || !method || !qty) return null
+  const perUnit = item[`${method}_per_unit_cents`]
+  const minCost = item[`${method}_min_cost_cents`]
+  if (perUnit == null) return null
+  const calc = perUnit * qty
+  return minCost && calc < minCost ? minCost : calc
+}
+
+function shippingExtraDays(item, method) {
+  if (!item || !method) return null
+  return item[`${method}_extra_days`] ?? null
+}
+
+function shippingMethodCopy(item, method) {
+  return item[`${method}_method`] || null
+}
+
+function ProposalPicker({ company, contact, item, choices, qty, onClose, onSelect, onCreateNew }) {
+  const [proposals, setProposals] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('proposals')
+      .select('id, proposal_number, name, status, created_at')
+      .eq('company_id', company.id)
+      .in('status', ['inquiry_received', 'discovery'])
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (!cancelled) { setProposals(data ?? []); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [company.id])
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-xl shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900">Add to which proposal?</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <button
+            onClick={onCreateNew}
+            className="w-full flex items-center gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50/40 hover:bg-blue-50 text-left"
+          >
+            <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center"><Plus size={16} /></div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-gray-900">Start a new proposal</div>
+              <div className="text-xs text-gray-500">Open the wizard with this product pre-loaded.</div>
+            </div>
+          </button>
+
+          {loading ? (
+            <div className="text-sm text-gray-400 py-4 text-center">Loading…</div>
+          ) : proposals.length > 0 ? (
+            <>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Or add to an open proposal</div>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {proposals.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => onSelect(p)}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 text-left"
+                  >
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-12">#{p.proposal_number}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{p.name || `Proposal ${p.proposal_number}`}</div>
+                      <div className="text-xs text-gray-500">{p.status?.replace(/_/g, ' ')} · {formatDate(p.created_at)}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function CatalogueDetail({ item, company, contact, onClose, onAddedToProposal, onStartNewProposal }) {
+  const [tiers, setTiers] = useState([])
+  const [colours, setColours] = useState([])
+  const [photos, setPhotos] = useState([])
+  const [photoIdx, setPhotoIdx] = useState(0)
+
+  // user choices
+  const [qty, setQty] = useState(item.moq_sales || 50)
+  const [colour, setColour] = useState(null) // {colour_name, hex_code} or null
+  const [size, setSize] = useState(null)
+  const [shippingMethod, setShippingMethod] = useState('standard')
+  const [customizationNotes, setCustomizationNotes] = useState('')
+  const [showProposalPicker, setShowProposalPicker] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', item.id).order('qty_from'),
+      supabase.from('catalogue_colour_options').select('*').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
+      supabase.from('catalogue_photos').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
+    ]).then(([t, c, p]) => {
+      // hide sample tier rows from customer
+      setTiers((t.data ?? []).filter((row) => !row.is_sample_tier))
+      setColours(c.data ?? [])
+      setPhotos(p.data ?? [])
+      // pre-select first colour if any
+      if ((c.data ?? []).length > 0) setColour((c.data ?? [])[0])
+    })
+  }, [item.id])
+
+  // Photo gallery: main_photo_url + catalogue_photos
+  const allPhotos = useMemo(() => {
+    const arr = []
+    if (item.main_photo_url) arr.push({ url: item.main_photo_url, caption: 'Main' })
+    for (const p of photos) arr.push({ url: p.photo_url, caption: p.caption })
+    // also colour swatches that have photo_url
+    for (const c of colours) {
+      if (c.photo_url && !arr.some((x) => x.url === c.photo_url)) {
+        arr.push({ url: c.photo_url, caption: c.colour_name })
+      }
+    }
+    return arr
+  }, [item.main_photo_url, photos, colours])
+
+  // Sizes — parse free-text available_sizes
+  const sizes = useMemo(() => {
+    if (!item.size_variants || !item.available_sizes) return []
+    return item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean)
+  }, [item.size_variants, item.available_sizes])
+
+  // Pricing math
+  const unitPrice = getTierPrice(tiers, qty)
+  const itemTotal = unitPrice != null ? unitPrice * qty : null
+  const shipCost = shippingCost(item, shippingMethod, qty)
+  const total = itemTotal != null ? itemTotal + (shipCost ?? 0) : null
+
+  // ETA: lead_time_days + production_time_days + shipping extra
+  const eta = (() => {
+    const lead = item.lead_time_days ?? 0
+    const prod = item.production_time_days ?? 0
+    const ship = shippingExtraDays(item, shippingMethod) ?? 0
+    const days = lead + prod + ship
+    if (!days) return null
+    const date = new Date()
+    date.setDate(date.getDate() + days)
+    return { days, date }
+  })()
+
+  const belowMOQ = item.moq_sales && qty < item.moq_sales
+  const canAdd = qty > 0 && (!sizes.length || size) && (!colours.length || colour)
+
+  const insertItem = async (proposalId) => {
+    setBusy(true); setError(null)
+    const { error: err } = await supabase.from('proposal_requested_items').insert({
+      proposal_id: proposalId,
+      company_id: company.id,
+      catalogue_item_id: item.id,
+      description: item.name,
+      quantity: qty,
+      colour_choice: colour?.colour_name || null,
+      size_choice: size || null,
+      shipping_method: shippingMethod,
+      notes: customizationNotes.trim() || null,
+      requested_by_contact_id: contact.id,
+    })
+    setBusy(false)
+    if (err) { setError(err.message); return }
+    setShowProposalPicker(false)
+    onAddedToProposal?.(proposalId)
+    onClose()
+  }
+
+  const handleAddClick = () => setShowProposalPicker(true)
+
+  const handleStartNewProposal = () => {
+    onStartNewProposal?.({
+      catalogue_item: item,
+      quantity: qty,
+      colour_choice: colour?.colour_name || null,
+      size_choice: size || null,
+      shipping_method: shippingMethod,
+      notes: customizationNotes.trim() || null,
+      photo_url: allPhotos[0]?.url || null,
+      tiers,
+    })
+    setShowProposalPicker(false)
+    onClose()
+  }
+
+  return (
+    <>
+    <div className="fixed inset-0 z-50 bg-black/30 flex justify-end" onClick={onClose}>
+      <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 truncate">{item.sku || item.category || 'Product'}</div>
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{item.name}</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Photo gallery */}
+          {allPhotos.length > 0 ? (
+            <div>
+              <div className="aspect-[4/3] bg-gray-50 rounded-xl border border-gray-200 overflow-hidden relative">
+                <img src={allPhotos[photoIdx]?.url} alt="" className="w-full h-full object-contain" onError={(e) => { e.target.style.display = 'none' }} />
+                {allPhotos.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setPhotoIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 hover:bg-white flex items-center justify-center shadow-sm"
+                    ><ChevronLeft size={16} /></button>
+                    <button
+                      onClick={() => setPhotoIdx((i) => (i + 1) % allPhotos.length)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 hover:bg-white flex items-center justify-center shadow-sm"
+                    ><ChevronRight size={16} /></button>
+                    <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full bg-black/60 text-white text-[10px]">{photoIdx + 1} / {allPhotos.length}</div>
+                  </>
+                )}
+              </div>
+              {allPhotos.length > 1 && (
+                <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
+                  {allPhotos.map((p, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setPhotoIdx(i)}
+                      className={`flex-shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 ${i === photoIdx ? 'border-blue-500' : 'border-transparent'}`}
+                    >
+                      <img src={p.url} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="aspect-[4/3] bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center">
+              <Package size={48} className="text-gray-300" />
+            </div>
+          )}
+
+          {/* Trait badges */}
+          <div className="flex flex-wrap gap-2">
+            {item.category && <Badge>{item.category}</Badge>}
+            {item.is_sustainable && <Badge tone="green"><Leaf size={10} className="mr-1" />Sustainable</Badge>}
+            {item.in_stock && <Badge tone="blue"><Box size={10} className="mr-1" />In stock</Badge>}
+            {item.made_in_eu && <Badge tone="purple"><Globe size={10} className="mr-1" />Made in EU</Badge>}
+            {item.pantone_match && <Badge tone="purple"><Sparkles size={10} className="mr-1" />Pantone match</Badge>}
+            {item.custom_made && <Badge tone="yellow">Custom-made</Badge>}
+          </div>
+
+          {item.description && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1 font-semibold">About</div>
+              <div className="text-sm text-gray-700 whitespace-pre-wrap">{item.description}</div>
+            </div>
+          )}
+
+          {/* Spec grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            <Spec label="Min order" value={item.moq_sales ? `${item.moq_sales} units` : 'No min'} />
+            <Spec label="Lead time" value={item.lead_time_days ? `${item.lead_time_days} days` : '—'} />
+            <Spec label="Production" value={item.production_time_days ? `${item.production_time_days} days` : '—'} />
+            <Spec label="Material" value={item.material} />
+            <Spec label="Weight" value={item.weight_grams ? `${item.weight_grams} g` : null} />
+            <Spec label="Customization" value={item.customization_options} />
+          </div>
+
+          {item.size_chart_url && (
+            <a href={item.size_chart_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
+              <ImageIcon size={14} />View size chart
+            </a>
+          )}
+
+          {/* Colour picker */}
+          {colours.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2 font-semibold">Colour {colour && <span className="text-gray-700 font-normal">· {colour.colour_name}</span>}</div>
+              <div className="flex flex-wrap gap-2">
+                {colours.map((c) => {
+                  const active = colour?.id === c.id
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setColour(c)}
+                      className={`group relative w-12 h-12 rounded-lg border-2 ${active ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
+                      title={c.colour_name}
+                    >
+                      <div
+                        className="w-full h-full rounded-md"
+                        style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
+                      />
+                      {active && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+                          <Check size={10} className="text-white" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Size picker */}
+          {sizes.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2 font-semibold">Size {size && <span className="text-gray-700 font-normal">· {size}</span>}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {sizes.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSize(s)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium border ${size === s ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 text-gray-700'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quantity */}
+          <div>
+            <div className="text-xs text-gray-500 mb-2 font-semibold">Quantity</div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="1"
+                value={qty}
+                onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+                className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {belowMOQ && (
+                <span className="text-xs text-amber-700 inline-flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full">
+                  Below MOQ ({item.moq_sales}) — sample tier may apply
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Pricing tiers — highlight current */}
+          {tiers.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2 font-semibold">Volume pricing</div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Quantity</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Unit price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tiers.map((t) => {
+                      const inTier = qty >= (t.qty_from ?? 0) && (t.qty_to == null || qty <= t.qty_to)
+                      return (
+                        <tr key={t.id} className={`border-t border-gray-100 ${inTier ? 'bg-blue-50' : ''}`}>
+                          <td className="px-3 py-2 text-gray-900">
+                            {t.qty_from}{t.qty_to ? `–${t.qty_to}` : '+'}
+                            {inTier && <span className="ml-2 text-[10px] text-blue-700 font-semibold">CURRENT</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatCents(t.sales_price_cents)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Shipping picker */}
+          <div>
+            <div className="text-xs text-gray-500 mb-2 font-semibold">Shipping</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(['express', 'standard', 'budget']).map((m) => {
+                const meta = SHIPPING_LABELS[m]
+                const Icon = meta.icon
+                const cost = shippingCost(item, m, qty)
+                const days = shippingExtraDays(item, m)
+                const method = shippingMethodCopy(item, m)
+                const active = shippingMethod === m
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setShippingMethod(m)}
+                    className={`p-3 rounded-lg border-2 text-left transition-colors ${active ? 'border-blue-500 ring-1 ring-blue-200 bg-white' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Icon size={13} className={meta.accent} />
+                      <span className={`text-xs font-semibold ${meta.accent}`}>{meta.label}</span>
+                      {active && <Check size={12} className="text-blue-600 ml-auto" />}
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {cost != null ? formatCents(cost) : <span className="text-gray-400 text-xs font-normal">Quote</span>}
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      {days ? `+${days} days` : 'Same lead time'}
+                      {method && ` · ${method}`}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Customisation note */}
+          <div>
+            <div className="text-xs text-gray-500 mb-2 font-semibold">Customisation notes <span className="text-gray-400 font-normal">(optional)</span></div>
+            <textarea
+              value={customizationNotes}
+              onChange={(e) => setCustomizationNotes(e.target.value)}
+              rows={2}
+              placeholder="Logo placement, special requests, packaging…"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Calculator summary */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+            <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">Estimate</div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-700">{qty} × {unitPrice != null ? formatCents(unitPrice) : 'TBD'}</span>
+                <span className="text-gray-900 font-medium">{itemTotal != null ? formatCents(itemTotal) : '—'}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-600">{SHIPPING_LABELS[shippingMethod].label} shipping</span>
+                <span className="text-gray-700">{shipCost != null ? formatCents(shipCost) : 'Quote'}</span>
+              </div>
+              <div className="border-t border-blue-200 pt-1.5 flex justify-between text-base">
+                <span className="font-semibold text-blue-900">Total estimate</span>
+                <span className="font-bold text-blue-900">{total != null ? formatCents(total) : 'TBD'}</span>
+              </div>
+              {eta && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-800 pt-1">
+                  <Clock size={12} />Ready in ~{eta.days} days · est. {formatDate(eta.date.toISOString())}
+                </div>
+              )}
+              <div className="text-[10px] text-blue-700/70 pt-1">
+                Live tier-based estimate. Final price + design quoted by our team.
+              </div>
+            </div>
+          </div>
+
+          {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</div>}
+
+          {/* CTA */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-gray-200 flex items-center gap-2">
+            <SecondaryButton onClick={onClose}>Close</SecondaryButton>
+            <PrimaryButton onClick={handleAddClick} disabled={!canAdd || busy} className="flex-1 justify-center py-3 text-base">
+              <Plus size={16} />Add to proposal
+              {total != null && <span className="ml-1 font-normal text-blue-100">· {formatCents(total)}</span>}
+            </PrimaryButton>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {showProposalPicker && (
+      <ProposalPicker
+        company={company}
+        contact={contact}
+        item={item}
+        choices={{ colour, size, qty, shippingMethod, customizationNotes }}
+        qty={qty}
+        onClose={() => setShowProposalPicker(false)}
+        onSelect={(p) => insertItem(p.id)}
+        onCreateNew={handleStartNewProposal}
+      />
+    )}
+    </>
+  )
+}
+
+function Spec({ label, value }) {
+  if (!value) return null
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-sm text-gray-900">{value}</div>
+    </div>
+  )
+}

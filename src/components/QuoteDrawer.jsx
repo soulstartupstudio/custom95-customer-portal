@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Download, X, Check, ThumbsDown, AlertCircle, Clock } from 'lucide-react'
-import { StatusBadge, formatCents, formatDate, PrimaryButton, SecondaryButton, Badge } from './ui'
-import CommentsThread from './CommentsThread'
+import { StatusBadge, formatCents, formatDate, PrimaryButton, SecondaryButton, Badge, deriveQuoteBreakdown } from './ui'
 
 const PIPELINE = [
   { id: 'draft', label: 'Finalising quote' },
@@ -41,6 +40,15 @@ function Pipeline({ status }) {
           <AlertCircle size={12} />You declined this quote
         </div>
       )}
+    </div>
+  )
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between text-gray-700">
+      <span>{label}</span>
+      <span className="text-gray-900">{value}</span>
     </div>
   )
 }
@@ -150,12 +158,6 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div><div className="text-xs text-gray-500">Subtotal</div><div className="text-gray-900 font-medium">{formatCents(quote.subtotal_cents)}</div></div>
-            <div><div className="text-xs text-gray-500">VAT {quote.vat_rate ? `(${quote.vat_rate}%)` : ''}</div><div className="text-gray-900">{formatCents(quote.vat_amount_cents)}</div></div>
-            <div><div className="text-xs text-gray-500">Total</div><div className="text-gray-900 font-semibold text-base">{formatCents(quote.total_cents)}</div></div>
-          </div>
-
           {items.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-2 font-semibold">Line items</div>
@@ -174,7 +176,8 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
                       <tr key={i.id} className="border-t border-gray-100">
                         <td className="px-3 py-2">
                           <div className="text-gray-900">{i.description}</div>
-                          {i.notes && <div className="text-xs text-gray-500 mt-0.5">{i.notes}</div>}
+                          {i.selected_colour && <div className="text-xs text-gray-500 mt-0.5">Colour: {i.selected_colour}</div>}
+                          {(i.customization_notes || i.notes) && <div className="text-xs text-gray-500 mt-0.5">{i.customization_notes || i.notes}</div>}
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{i.quantity}</td>
                         <td className="px-3 py-2 text-right text-gray-700">{formatCents(i.unit_sales_price_cents)}</td>
@@ -186,6 +189,27 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
               </div>
             </div>
           )}
+
+          {/* Full breakdown */}
+          {(() => {
+            const b = deriveQuoteBreakdown(quote, items)
+            return (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">Breakdown</div>
+                <div className="p-4 space-y-1.5 text-sm">
+                  <Row label="Items subtotal" value={formatCents(b.items_subtotal || b.after_discount)} />
+                  {b.discount > 0 && (
+                    <Row label="Discount" value={<span className="text-red-600">−{formatCents(b.discount)}</span>} />
+                  )}
+                  {b.delivery > 0 && <Row label="Delivery" value={formatCents(b.delivery)} />}
+                  <div className="border-t border-gray-100 my-1" />
+                  <Row label={`VAT${b.vat_rate ? ` (${b.vat_rate}%)` : ''}`} value={formatCents(b.vat)} />
+                  <div className="border-t border-gray-200 my-1" />
+                  <Row label={<span className="text-base font-semibold text-gray-900">Total</span>} value={<span className="text-base font-bold text-gray-900">{formatCents(b.total)}</span>} />
+                </div>
+              </div>
+            )
+          })()}
 
           {quote.notes && (
             <div>
@@ -251,10 +275,6 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
               </div>
             </div>
           )}
-
-          <div className="pt-5 border-t border-gray-100">
-            <CommentsThread entityType="quote" entityId={quote.id} company={company} contact={contact} />
-          </div>
         </div>
       </div>
     </div>
