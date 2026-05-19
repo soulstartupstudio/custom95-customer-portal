@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/dexholman/Documents/Claude/customer-portal && [ -n \"$(git status --porcelain)\" ] && { git add -A && git commit -m \"Auto-sync from Claude $(date +'%Y-%m-%d %H:%M:%S')\" >/dev/null && git push --quiet; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
