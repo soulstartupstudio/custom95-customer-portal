@@ -511,8 +511,13 @@ function TeamPicker({ company, contact, selectedIds, onChange }) {
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
       role: form.role.trim() || null,
+      portal_active: true,
     }).select().single()
     if (error) { setSaveErr(error.message); return }
+    // Fire invite email asynchronously — don't block the wizard if it fails.
+    if (data?.id && data.email) {
+      supabase.functions.invoke('portal-invite', { body: { contact_id: data.id } }).catch(() => {})
+    }
     setAdding(false)
     setForm({ first_name: '', last_name: '', email: '', phone: '', role: '' })
     setContacts((arr) => [...arr, data])
