@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2 } from 'lucide-react'
+import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../components/ui'
 import ContactEditor from '../components/ContactEditor'
 
-function ContactCard({ contact, isMe, stats, onEdit, onRemove }) {
+function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending }) {
   const initials = [contact.first_name, contact.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase()
   return (
     <Card>
@@ -24,6 +24,16 @@ function ContactCard({ contact, isMe, stats, onEdit, onRemove }) {
               {contact.portal_active && <Badge tone="green"><Shield size={10} className="mr-1" />Portal access</Badge>}
             </div>
             <div className="flex items-center gap-3">
+              {!isMe && contact.email && (
+                <button
+                  onClick={onResendInvite}
+                  disabled={resending}
+                  className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs disabled:opacity-50"
+                  title={contact.portal_active ? 'Resend sign-in link' : 'Send portal invite'}
+                >
+                  <Send size={12} />{resending ? '…' : contact.portal_active ? 'Resend' : 'Invite'}
+                </button>
+              )}
               <button
                 onClick={onEdit}
                 className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs"
@@ -94,6 +104,7 @@ export default function ContactsPage({ company, contact }) {
   const [refresh, setRefresh] = useState(0)
   const [proposalContacts, setProposalContacts] = useState([])
   const [requestedItems, setRequestedItems] = useState([])
+  const [resendingId, setResendingId] = useState(null)
 
   useEffect(() => {
     if (!company?.id) return
@@ -171,6 +182,26 @@ export default function ContactsPage({ company, contact }) {
               isMe={c.id === contact?.id}
               stats={statsByContact[c.id]}
               onEdit={() => setEditing(c)}
+              resending={resendingId === c.id}
+              onResendInvite={async () => {
+                if (!c.email) return
+                const action = c.portal_active ? 'resend the sign-in link to' : 'invite'
+                if (!confirm(`Send a portal email to ${action} ${c.email}?`)) return
+                setResendingId(c.id)
+                try {
+                  const { data, error } = await supabase.functions.invoke('portal-invite', {
+                    body: { contact_id: c.id },
+                  })
+                  if (error) throw new Error(error.message)
+                  if (data?.error) throw new Error(data.error)
+                  alert(`Email sent to ${data.email}.`)
+                  setRefresh((r) => r + 1)
+                } catch (e) {
+                  alert(`Failed to send: ${e.message || e}`)
+                } finally {
+                  setResendingId(null)
+                }
+              }}
               onRemove={async () => {
                 const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email
                 if (!confirm(`Remove ${name} from your team? This revokes their portal access immediately.`)) return

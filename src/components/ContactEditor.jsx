@@ -60,8 +60,23 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
     const res = isEdit
       ? await supabase.from('contacts').update(payload).eq('id', contact.id).select().single()
       : await supabase.from('contacts').insert(payload).select().single()
+    if (res.error) { setBusy(false); setError(res.error.message); return }
+
+    // On add: fire the portal-invite edge function so they get a welcome email
+    // with a sign-in link. We don't block the save if the email fails — just
+    // surface a soft warning.
+    if (!isEdit && res.data?.id && payload.email) {
+      const { error: inviteErr } = await supabase.functions.invoke('portal-invite', {
+        body: { contact_id: res.data.id },
+      })
+      if (inviteErr) {
+        setBusy(false)
+        setError(`Teammate saved, but invite email failed: ${inviteErr.message}`)
+        onSaved?.(res.data) // still close — the contact exists
+        return
+      }
+    }
     setBusy(false)
-    if (res.error) { setError(res.error.message); return }
     onSaved?.(res.data)
   }
 
