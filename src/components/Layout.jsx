@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
@@ -37,7 +37,28 @@ export default function Layout({ session, contact, company }) {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
   const [refreshKey, setRefreshKey] = useState(0)
-  const [deepLink, setDeepLink] = useState(null) // { tab, id }
+  const [deepLink, setDeepLink] = useState(null) // { tab, id, review }
+
+  // Read deep-link params from URL on first load: ?tab=projects&id=<uuid>&review=<token>
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const tab = params.get('tab')
+      const id = params.get('id')
+      const review = params.get('review')
+      if (tab) {
+        const known = tabs.find((t) => t.id === tab)
+        if (known) setActiveTab(tab)
+      }
+      if (tab && (id || review)) setDeepLink({ tab, id, review })
+      // Clean URL so refresh doesn't re-trigger
+      if (tab || id || review) {
+        const url = new URL(window.location.href)
+        url.search = ''
+        window.history.replaceState({}, '', url.toString())
+      }
+    } catch { /* ignore */ }
+  }, [])
 
   const visibleTabs = tabs.filter((t) => !t.requiresBrandshop || company?.brandshop_addon)
 
@@ -57,7 +78,7 @@ export default function Layout({ session, contact, company }) {
       case 'proposals': return <ProposalsPage key={refreshKey} company={company} contact={contact} onStartProposal={openWizard} onOpenProject={(id) => navigateTo('projects', id)} />
       case 'quotes': return <QuotesPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('quotes')} clearDeepLink={clearDeepLink} />
       case 'designs': return <DesignsPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('designs')} clearDeepLink={clearDeepLink} />
-      case 'projects': return <ProjectsPage company={company} contact={contact} deepLinkId={linkId('projects')} clearDeepLink={clearDeepLink} />
+      case 'projects': return <ProjectsPage company={company} contact={contact} deepLinkId={linkId('projects')} deepLinkReview={deepLink?.tab === 'projects' ? deepLink?.review : null} clearDeepLink={clearDeepLink} />
       case 'brand': return <BrandPage company={company} contact={contact} />
       case 'brandshop': return <BrandshopPage company={company} contact={contact} />
       case 'warehouse': return <WarehousePage company={company} contact={contact} />

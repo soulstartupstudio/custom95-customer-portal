@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatCents, formatDate, Table, Badge, SecondaryButton, SectionBlock } from '../components/ui'
 import DesignDrawer from '../components/DesignDrawer'
+import ProjectReviewModal from '../components/ProjectReviewModal'
 import { fetchDesignMockupUrls } from '../lib/designThumbnails'
 
 // Customer journey for projects (maps to projects.stage)
@@ -284,7 +285,7 @@ function AddressCard({ address, label }) {
   )
 }
 
-function ProjectDetail({ project, company, contact, onClose }) {
+function ProjectDetail({ project, company, contact, onClose, onRate }) {
   const [items, setItems] = useState([])
   const [files, setFiles] = useState([])
   const [designs, setDesigns] = useState([])
@@ -391,7 +392,21 @@ function ProjectDetail({ project, company, contact, onClose }) {
             <div className="text-xs text-gray-500">Project #{project.display_number ?? project.project_number}</div>
             <h2 className="text-lg font-semibold text-gray-900">{project.name || `Project ${project.display_number ?? project.project_number}`}</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          <div className="flex items-center gap-2">
+            {(project.stage === 'delivered' || project.stage === 'completed') && (
+              <button
+                onClick={onRate}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  project.review_completed
+                    ? 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                }`}
+              >
+                <Palette size={13} />{project.review_completed ? 'Edit review' : 'Rate this project'}
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          </div>
         </div>
         <div className="p-6 space-y-6">
           {/* Journey */}
@@ -626,11 +641,12 @@ function ProjectDetail({ project, company, contact, onClose }) {
   )
 }
 
-export default function ProjectsPage({ company, contact, deepLinkId, clearDeepLink }) {
+export default function ProjectsPage({ company, contact, deepLinkId, deepLinkReview, clearDeepLink }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('kanban')
+  const [reviewProject, setReviewProject] = useState(null)
 
   useEffect(() => {
     if (!company?.id) return
@@ -659,9 +675,11 @@ export default function ProjectsPage({ company, contact, deepLinkId, clearDeepLi
     const match = rows.find((r) => r.id === deepLinkId)
     if (match) {
       setSelected(match)
+      // If the URL carried a review token, open the rating modal too
+      if (deepLinkReview) setReviewProject(match)
       clearDeepLink?.()
     }
-  }, [deepLinkId, rows])
+  }, [deepLinkId, deepLinkReview, rows])
 
   if (loading) return <Spinner />
 
@@ -725,7 +743,18 @@ export default function ProjectsPage({ company, contact, deepLinkId, clearDeepLi
         </>
       )}
 
-      {selected && <ProjectDetail project={selected} company={company} contact={contact} onClose={() => setSelected(null)} />}
+      {selected && <ProjectDetail project={selected} company={company} contact={contact} onClose={() => setSelected(null)} onRate={() => setReviewProject(selected)} />}
+
+      {reviewProject && (
+        <ProjectReviewModal
+          project={reviewProject}
+          onClose={() => setReviewProject(null)}
+          onSaved={(updated) => {
+            setRows((prev) => prev.map((r) => r.id === updated.id ? { ...r, ...updated } : r))
+            if (selected?.id === updated.id) setSelected({ ...selected, ...updated })
+          }}
+        />
+      )}
     </div>
   )
 }
