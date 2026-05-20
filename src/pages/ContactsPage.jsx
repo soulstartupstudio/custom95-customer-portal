@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package } from 'lucide-react'
+import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2 } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../components/ui'
 import ContactEditor from '../components/ContactEditor'
 
-function ContactCard({ contact, isMe, stats, onEdit }) {
+function ContactCard({ contact, isMe, stats, onEdit, onRemove }) {
   const initials = [contact.first_name, contact.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase()
   return (
     <Card>
@@ -23,13 +23,24 @@ function ContactCard({ contact, isMe, stats, onEdit }) {
               {isMe && <Badge tone="blue">You</Badge>}
               {contact.portal_active && <Badge tone="green"><Shield size={10} className="mr-1" />Portal access</Badge>}
             </div>
-            <button
-              onClick={onEdit}
-              className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs"
-              title="Edit"
-            >
-              <Pencil size={12} />Edit
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onEdit}
+                className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs"
+                title="Edit"
+              >
+                <Pencil size={12} />Edit
+              </button>
+              {!isMe && (
+                <button
+                  onClick={onRemove}
+                  className="text-gray-400 hover:text-red-600 inline-flex items-center gap-1 text-xs"
+                  title="Remove team member (revokes portal access)"
+                >
+                  <Trash2 size={12} />Remove
+                </button>
+              )}
+            </div>
           </div>
           {contact.role && <div className="text-xs text-gray-500 mt-0.5">{contact.role}</div>}
           <div className="mt-3 space-y-1.5">
@@ -160,6 +171,13 @@ export default function ContactsPage({ company, contact }) {
               isMe={c.id === contact?.id}
               stats={statsByContact[c.id]}
               onEdit={() => setEditing(c)}
+              onRemove={async () => {
+                const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email
+                if (!confirm(`Remove ${name} from your team? This revokes their portal access immediately.`)) return
+                const { error } = await supabase.from('contacts').delete().eq('id', c.id)
+                if (error) { alert(error.message); return }
+                setRefresh((r) => r + 1)
+              }}
             />
           ))}
         </div>

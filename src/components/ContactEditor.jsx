@@ -54,6 +54,9 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
       whatsapp_phone: form.whatsapp_phone?.trim() || null,
       profile_image_url: form.profile_image_url || null,
     }
+    // New teammates added from the portal get portal access automatically.
+    // Their portal_auth_id binds on first sign-in via App.jsx's auto-claim flow.
+    if (!isEdit) payload.portal_active = true
     const res = isEdit
       ? await supabase.from('contacts').update(payload).eq('id', contact.id).select().single()
       : await supabase.from('contacts').insert(payload).select().single()
@@ -102,7 +105,7 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
           </div>
           {!isEdit && (
             <p className="text-[10px] text-gray-500">
-              New teammates are added as contacts. Portal access can be granted later by your account manager.
+              New teammates are added with portal access. They'll sign in with this email via a magic link the first time they visit.
             </p>
           )}
           {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg p-2">{error}</div>}
