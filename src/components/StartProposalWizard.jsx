@@ -277,18 +277,31 @@ function CustomItemForm({ company, onAdd }) {
   )
 }
 
-// --- CART ROW with inline options ---
+// --- CART ROW with always-visible options ---
 function CartRow({ item: it, idx, onUpdate, onRemove }) {
-  const [expanded, setExpanded] = useState(false)
+  const hasSizes = (it.available_sizes?.length ?? 0) > 0
   const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
   const surcharge = it.customization_surcharge_cents ?? 0
   const unitPrice = baseUnit != null ? baseUnit + surcharge : null
   const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity : null
   const hasOptions = it.type === 'catalogue' && (
     (it.available_colours?.length ?? 0) > 0 ||
-    (it.available_sizes?.length ?? 0) > 0 ||
-    (it.available_customizations?.length ?? 0) > 0
+    hasSizes ||
+    (it.available_customizations?.length ?? 0) > 0 ||
+    it.pantone_match_available
   )
+
+  // Helper: write a size→qty into size_breakdown and recompute total
+  const setSizeQty = (s, val) => {
+    const next = { ...(it.size_breakdown || {}) }
+    const n = Number(val)
+    if (!val || isNaN(n) || n <= 0) delete next[s]
+    else next[s] = n
+    const total = Object.values(next).reduce((a, b) => a + (Number(b) || 0), 0)
+    onUpdate(idx, { size_breakdown: Object.keys(next).length ? next : null, quantity: total || null })
+  }
+
+  const pantoneBelowMoq = it.pantone_match_available && it.pantone_match_moq && it.quantity && it.quantity < it.pantone_match_moq
 
   return (
     <>
@@ -307,20 +320,13 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                 <span>{it.type === 'custom' ? 'Custom' : it.category || 'Catalogue'}</span>
                 {it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
-                {it.size_choice && <><span>·</span><span>{it.size_choice}</span></>}
                 {it.customization_name && (
                   <>
                     <span>·</span>
                     <span className="text-gray-700">{it.customization_name}{surcharge > 0 && <span className="text-amber-700"> (+{formatCents(surcharge)})</span>}</span>
                   </>
                 )}
-                {hasOptions && (
-                  <button
-                    type="button"
-                    onClick={() => setExpanded((e) => !e)}
-                    className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
-                  >{expanded ? 'Hide options' : 'Edit options'}</button>
-                )}
+                {it.pantone_code && <><span>·</span><span className="text-indigo-700">PMS {it.pantone_code}</span></>}
               </div>
             </div>
           </div>
@@ -330,8 +336,10 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
             type="number"
             min="1"
             value={it.quantity ?? ''}
+            disabled={hasSizes && !!it.size_breakdown}
             onChange={(e) => onUpdate(idx, { quantity: e.target.value ? Number(e.target.value) : null })}
-            className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+            title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : undefined}
           />
         </td>
         <td className="px-3 py-2 text-right text-xs text-gray-700">
@@ -346,7 +354,7 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
           </button>
         </td>
       </tr>
-      {expanded && hasOptions && (
+      {hasOptions && (
         <tr className="border-t border-gray-50 bg-gray-50/60">
           <td colSpan={5} className="px-3 py-3">
             <div className="space-y-3">
@@ -370,19 +378,25 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
                   </div>
                 </div>
               )}
-              {(it.available_sizes?.length ?? 0) > 0 && (
+              {hasSizes && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Size {it.size_choice && <span className="text-gray-700 font-normal lowercase">· {it.size_choice}</span>}</div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold flex items-center gap-2">
+                    <span>Quantity per size</span>
+                    <span className="text-gray-400 normal-case font-normal">Total: <strong className="text-gray-700">{it.quantity ?? 0}</strong></span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     {it.available_sizes.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => onUpdate(idx, { size_choice: s })}
-                        className={`px-2.5 py-1 rounded text-xs font-medium border ${it.size_choice === s ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 text-gray-700 bg-white'}`}
-                      >
-                        {s}
-                      </button>
+                      <label key={s} className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] uppercase font-semibold text-gray-500">{s}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={it.size_breakdown?.[s] ?? ''}
+                          onChange={(e) => setSizeQty(s, e.target.value)}
+                          className="w-14 px-1.5 py-1 border border-gray-200 rounded text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                      </label>
                     ))}
                   </div>
                 </div>
@@ -415,6 +429,25 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
                       )
                     })}
                   </div>
+                </div>
+              )}
+              {it.pantone_match_available && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold flex items-center gap-1.5">
+                    <Sparkles size={11} />Pantone match (PMS code)
+                    {it.pantone_match_moq && (
+                      <span className="text-[10px] normal-case font-normal text-gray-500">
+                        — available from <strong className={pantoneBelowMoq ? 'text-amber-700' : 'text-gray-700'}>{it.pantone_match_moq}</strong> units{pantoneBelowMoq ? ` (you have ${it.quantity ?? 0})` : ''}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={it.pantone_code || ''}
+                    onChange={(e) => onUpdate(idx, { pantone_code: e.target.value })}
+                    placeholder="e.g. PMS 286 C"
+                    className="w-full max-w-xs px-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
                 </div>
               )}
             </div>
@@ -727,12 +760,17 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       notes: prefillItem.notes || null,
       tiers: prefillItem.tiers || [],
       colour_choice: prefillItem.colour_choice || null,
-      size_choice: prefillItem.size_choice || null,
+      size_breakdown: prefillItem.size_breakdown || null,
       shipping_method: prefillItem.shipping_method || null,
       customization_id: prefillItem.customization_id || null,
       customization_name: prefillItem.customization_name || null,
       customization_surcharge_cents: prefillItem.customization_surcharge_cents ?? null,
-      // No available_* lists since they were chosen already in CatalogueDetail; user can edit in the wizard cart later if needed.
+      pantone_code: prefillItem.pantone_code || null,
+      pantone_match_available: !!item.pantone_match,
+      pantone_match_moq: item.pantone_match_moq || null,
+      available_colours: prefillItem.available_colours || [],
+      available_sizes: prefillItem.available_sizes || (item.size_variants && item.available_sizes ? item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) : []),
+      available_customizations: prefillItem.available_customizations || [],
     }]
   })
   const [addressIds, setAddressIds] = useState([])
@@ -779,9 +817,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         available_colours: colours,
         available_sizes: sizesParsed,
         available_customizations: customizations,
+        pantone_match_available: !!item.pantone_match,
+        pantone_match_moq: item.pantone_match_moq || null,
         // chosen values
         colour_choice: colours[0]?.colour_name || null,
-        size_choice: null,
+        size_breakdown: null,
+        pantone_code: null,
         customization_id: defaultCust?.id || null,
         customization_name: defaultCust?.name || null,
         customization_surcharge_cents: defaultCust?.surcharge_cents ?? null,
@@ -864,6 +905,8 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         customization_id: it.customization_id || null,
         customization_name: it.customization_name || null,
         customization_surcharge_cents: it.customization_surcharge_cents ?? null,
+        size_breakdown: it.size_breakdown || null,
+        pantone_code: it.pantone_code?.trim() || null,
         requested_by_contact_id: contact.id,
       }))
       const { error: itemsErr } = await supabase.from('proposal_requested_items').insert(rows)

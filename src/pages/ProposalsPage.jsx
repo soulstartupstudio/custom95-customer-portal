@@ -476,10 +476,17 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
                           <span>·</span>
                           <span>{i.catalogue_item_id ? 'catalogue' : 'custom'}</span>
                           {i.colour_choice && <><span>·</span><span>{i.colour_choice}</span></>}
-                          {i.size_choice && <><span>·</span><span>{i.size_choice}</span></>}
                           {i.customization_name && <><span>·</span><span className="text-gray-700">{i.customization_name}{i.customization_surcharge_cents > 0 && <span className="text-amber-700"> (+{formatCents(i.customization_surcharge_cents)})</span>}</span></>}
+                          {i.pantone_code && <><span>·</span><span className="text-indigo-700">PMS {i.pantone_code}</span></>}
                           {!isCustomer && <Badge tone="gray">Added by team</Badge>}
                         </div>
+                        {i.size_breakdown && Object.keys(i.size_breakdown).length > 0 && (
+                          <div className="text-xs text-gray-600 mt-1 flex flex-wrap gap-1">
+                            {Object.entries(i.size_breakdown).map(([s, n]) => (
+                              <span key={s} className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-[10px]"><strong>{s}</strong> · {n}</span>
+                            ))}
+                          </div>
+                        )}
                         {i.notes && <div className="text-xs text-gray-600 mt-1 whitespace-pre-wrap line-clamp-2">{i.notes}</div>}
                       </div>
                       <div className="flex items-center gap-2">

@@ -114,8 +114,9 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   // user choices
   const [qty, setQty] = useState(item.moq_sales || 50)
   const [colour, setColour] = useState(null) // {colour_name, hex_code} or null
-  const [size, setSize] = useState(null)
+  const [sizeBreakdown, setSizeBreakdown] = useState({}) // { S: 10, M: 20, ... }
   const [customization, setCustomization] = useState(null) // {id, name, surcharge_cents} or null
+  const [pantoneCode, setPantoneCode] = useState('')
   const [shippingMethod, setShippingMethod] = useState('standard')
   const [customizationNotes, setCustomizationNotes] = useState('')
   const [showProposalPicker, setShowProposalPicker] = useState(false)
@@ -163,16 +164,16 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     return item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean)
   }, [item.size_variants, item.available_sizes])
 
-  // Pricing math
-  const unitBasePrice = getTierPrice(tiers, qty)
+  // Pricing math — use effective qty (sum of size breakdown when in size-variants mode)
+  const unitBasePrice = getTierPrice(tiers, effectiveQty)
   const customizationSurcharge = customization?.surcharge_cents ?? 0
   const unitPrice = unitBasePrice != null ? unitBasePrice + customizationSurcharge : null
-  const itemTotal = unitPrice != null ? unitPrice * qty : null
-  const shipCost = shippingCost(item, shippingMethod, qty)
+  const itemTotal = unitPrice != null ? unitPrice * effectiveQty : null
+  const shipCost = shippingCost(item, shippingMethod, effectiveQty)
   const total = itemTotal != null ? itemTotal + (shipCost ?? 0) : null
 
   // Pantone match needs a minimum order qty — flag if not met
-  const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && qty < item.pantone_match_moq
+  const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && effectiveQty < item.pantone_match_moq
 
   // ETA: lead_time_days + production_time_days + shipping extra
   const eta = (() => {
@@ -186,8 +187,22 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     return { days, date }
   })()
 
-  const belowMOQ = item.moq_sales && qty < item.moq_sales
-  const canAdd = qty > 0 && (!sizes.length || size) && (!colours.length || colour)
+  // Sum of per-size quantities (when size variants are in play)
+  const sizeTotal = Object.values(sizeBreakdown).reduce((a, b) => a + (Number(b) || 0), 0)
+  const sizeChosen = !sizes.length || sizeTotal > 0
+  // Effective order qty: per-size sum when sizes apply, otherwise the standalone qty input
+  const effectiveQty = sizes.length ? sizeTotal : qty
+  const belowMOQ = item.moq_sales && effectiveQty < item.moq_sales
+  const canAdd = effectiveQty > 0 && sizeChosen && (!colours.length || colour)
+
+  // Strip zero-qty entries before saving size_breakdown
+  const cleanSizeBreakdown = () => {
+    const cleaned = {}
+    for (const [s, n] of Object.entries(sizeBreakdown)) {
+      if (Number(n) > 0) cleaned[s] = Number(n)
+    }
+    return Object.keys(cleaned).length ? cleaned : null
+  }
 
   const insertItem = async (proposalId) => {
     setBusy(true); setError(null)
@@ -196,13 +211,14 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       company_id: company.id,
       catalogue_item_id: item.id,
       description: item.name,
-      quantity: qty,
+      quantity: effectiveQty,
       colour_choice: colour?.colour_name || null,
-      size_choice: size || null,
+      size_breakdown: cleanSizeBreakdown(),
       shipping_method: shippingMethod,
       customization_id: customization?.id || null,
       customization_name: customization?.name || null,
       customization_surcharge_cents: customization?.surcharge_cents ?? null,
+      pantone_code: pantoneCode.trim() || null,
       notes: customizationNotes.trim() || null,
       requested_by_contact_id: contact.id,
     })
@@ -218,16 +234,20 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const handleStartNewProposal = () => {
     onStartNewProposal?.({
       catalogue_item: item,
-      quantity: qty,
+      quantity: effectiveQty,
       colour_choice: colour?.colour_name || null,
-      size_choice: size || null,
+      size_breakdown: cleanSizeBreakdown(),
       shipping_method: shippingMethod,
       customization_id: customization?.id || null,
       customization_name: customization?.name || null,
       customization_surcharge_cents: customization?.surcharge_cents ?? null,
+      pantone_code: pantoneCode.trim() || null,
       notes: customizationNotes.trim() || null,
       photo_url: allPhotos[0]?.url || null,
       tiers,
+      available_colours: colours,
+      available_sizes: sizes,
+      available_customizations: customizations,
     })
     setShowProposalPicker(false)
     onClose()
@@ -348,19 +368,34 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             </div>
           )}
 
-          {/* Size picker */}
+          {/* Size picker — quantity per size */}
           {sizes.length > 0 && (
             <div>
-              <div className="text-xs text-gray-500 mb-2 font-semibold">Size {size && <span className="text-gray-700 font-normal">· {size}</span>}</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="text-xs text-gray-500 mb-2 font-semibold flex items-center gap-2">
+                <span>Quantity per size</span>
+                <span className="text-gray-400 normal-case font-normal">Total: <strong className="text-gray-700">{sizeTotal}</strong></span>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {sizes.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setSize(s)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium border ${size === s ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 text-gray-700'}`}
-                  >
-                    {s}
-                  </button>
+                  <label key={s} className="flex flex-col items-center gap-1">
+                    <span className="text-[10px] uppercase font-semibold text-gray-500">{s}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={sizeBreakdown[s] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setSizeBreakdown((prev) => {
+                          const next = { ...prev }
+                          if (!v || Number(v) <= 0) delete next[s]
+                          else next[s] = Number(v)
+                          return next
+                        })
+                      }}
+                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
                 ))}
               </div>
             </div>
@@ -404,31 +439,55 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             </div>
           )}
 
-          {/* Pantone match MOQ warning */}
-          {pantoneMOQUnmet && (
-            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 inline-flex items-center gap-1.5">
-              <Sparkles size={12} />Pantone match requires at least <strong>{item.pantone_match_moq}</strong> units (you have {qty}).
+          {/* Pantone match block — input + MOQ warning */}
+          {item.pantone_match && (
+            <div className="border border-indigo-200 bg-indigo-50/50 rounded-lg p-3">
+              <div className="text-xs font-semibold text-indigo-900 flex items-center gap-1.5 mb-1">
+                <Sparkles size={12} />Pantone (PMS) match available
+                {item.pantone_match_moq && (
+                  <span className="text-[10px] font-normal text-indigo-700">
+                    · from <strong>{item.pantone_match_moq}</strong> units
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-indigo-800/80 mb-2">
+                Enter a PMS code below and we'll match it exactly during production.
+              </p>
+              <input
+                type="text"
+                value={pantoneCode}
+                onChange={(e) => setPantoneCode(e.target.value)}
+                placeholder="e.g. PMS 286 C"
+                className="w-full max-w-xs px-3 py-1.5 border border-indigo-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
+              {pantoneMOQUnmet && (
+                <div className="text-xs text-amber-700 mt-2 inline-flex items-center gap-1">
+                  Below pantone MOQ — currently {effectiveQty}, need {item.pantone_match_moq}.
+                </div>
+              )}
             </div>
           )}
 
-          {/* Quantity */}
-          <div>
-            <div className="text-xs text-gray-500 mb-2 font-semibold">Quantity</div>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min="1"
-                value={qty}
-                onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
-                className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {belowMOQ && (
-                <span className="text-xs text-amber-700 inline-flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full">
-                  Below MOQ ({item.moq_sales}) — sample tier may apply
-                </span>
-              )}
+          {/* Quantity (hidden when size_variants is in play — driven by per-size grid above) */}
+          {sizes.length === 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2 font-semibold">Quantity</div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min="1"
+                  value={qty}
+                  onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {belowMOQ && (
+                  <span className="text-xs text-amber-700 inline-flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full">
+                    Below MOQ ({item.moq_sales}) — sample tier may apply
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Pricing tiers — highlight current */}
           {tiers.length > 0 && (
@@ -444,7 +503,7 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
                   </thead>
                   <tbody>
                     {tiers.map((t) => {
-                      const inTier = qty >= (t.qty_from ?? 0) && (t.qty_to == null || qty <= t.qty_to)
+                      const inTier = effectiveQty >= (t.qty_from ?? 0) && (t.qty_to == null || effectiveQty <= t.qty_to)
                       return (
                         <tr key={t.id} className={`border-t border-gray-100 ${inTier ? 'bg-blue-50' : ''}`}>
                           <td className="px-3 py-2 text-gray-900">
@@ -468,7 +527,7 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
               {(['express', 'standard', 'budget']).map((m) => {
                 const meta = SHIPPING_LABELS[m]
                 const Icon = meta.icon
-                const cost = shippingCost(item, m, qty)
+                const cost = shippingCost(item, m, effectiveQty)
                 const days = shippingExtraDays(item, m)
                 const method = shippingMethodCopy(item, m)
                 const active = shippingMethod === m
@@ -513,13 +572,13 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">Estimate</div>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-700">{qty} × {unitBasePrice != null ? formatCents(unitBasePrice) : 'TBD'}</span>
-                <span className="text-gray-900 font-medium">{unitBasePrice != null ? formatCents(unitBasePrice * qty) : '—'}</span>
+                <span className="text-gray-700">{effectiveQty} × {unitBasePrice != null ? formatCents(unitBasePrice) : 'TBD'}</span>
+                <span className="text-gray-900 font-medium">{unitBasePrice != null ? formatCents(unitBasePrice * effectiveQty) : '—'}</span>
               </div>
               {customizationSurcharge > 0 && (
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-600">{customization?.name} (+{formatCents(customizationSurcharge)}/unit)</span>
-                  <span className="text-gray-700">+{formatCents(customizationSurcharge * qty)}</span>
+                  <span className="text-gray-700">+{formatCents(customizationSurcharge * effectiveQty)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs">
