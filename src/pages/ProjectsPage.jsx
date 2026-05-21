@@ -9,6 +9,7 @@ import { PageHeader, StatusBadge, EmptyState, Spinner, formatCents, formatDate, 
 import DesignDrawer from '../components/DesignDrawer'
 import ProjectReviewModal from '../components/ProjectReviewModal'
 import { fetchDesignMockupUrls } from '../lib/designThumbnails'
+import { downloadInvoicePdf } from '../lib/downloadInvoice'
 
 // Customer journey for projects (maps to projects.stage)
 const JOURNEY = [
@@ -40,6 +41,29 @@ const FULFILMENT_LABEL = {
   multi_address: 'Multiple addresses',
   warehouse: 'Custom95 warehouse',
   brandshop: 'Brandshop fulfilment',
+}
+
+function InvoiceDownloadButton({ invoice }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const click = async () => {
+    setBusy(true); setErr(null)
+    try { await downloadInvoicePdf(invoice.id) }
+    catch (e) { setErr(e.message || 'Failed') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={click}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg flex-shrink-0 disabled:opacity-50"
+      >
+        <Download size={12} />{busy ? 'Preparing…' : 'Download PDF'}
+      </button>
+      {err && <div className="text-[10px] text-red-600 max-w-[180px] text-right">{err}</div>}
+    </div>
+  )
 }
 
 function ProjectCard({ project, onClick, compact = false }) {
@@ -309,7 +333,7 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
         supabase.from('project_line_items_client').select('*').eq('project_id', project.id).order('sort_order'),
         supabase.from('project_files').select('id, file_name, file_type, storage_url, created_at').eq('project_id', project.id).order('created_at', { ascending: false }),
         supabase.from('invoices')
-          .select('id, invoice_number, status, subtotal_cents, vat_rate, vat_amount_cents, discount_cents, total_cents, invoice_date, due_date, paid_at, payment_method, invoice_pdf_url, notes')
+          .select('id, invoice_number, status, subtotal_cents, vat_rate, vat_amount_cents, discount_cents, total_cents, invoice_date, due_date, paid_at, payment_method, invoice_pdf_url, moneybird_invoice_url, notes')
           .eq('project_id', project.id)
           .order('invoice_date', { ascending: false }),
       ])
@@ -534,16 +558,7 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
                               {inv.paid_at && <> · Paid {formatDate(inv.paid_at)}</>}
                             </div>
                           </div>
-                          {inv.invoice_pdf_url && (
-                            <a
-                              href={inv.invoice_pdf_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg flex-shrink-0"
-                            >
-                              <Download size={12} />Download
-                            </a>
-                          )}
+                          {inv.status !== 'draft' && <InvoiceDownloadButton invoice={inv} />}
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">

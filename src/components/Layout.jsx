@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
-  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles
+  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet
 } from 'lucide-react'
 import DashboardPage from '../pages/DashboardPage'
 import SettingsPage from '../pages/SettingsPage'
@@ -10,6 +10,7 @@ import ProposalsPage from '../pages/ProposalsPage'
 import QuotesPage from '../pages/QuotesPage'
 import DesignsPage from '../pages/DesignsPage'
 import ProjectsPage from '../pages/ProjectsPage'
+import InvoicesPage from '../pages/InvoicesPage'
 import WarehousePage from '../pages/WarehousePage'
 import CataloguePage from '../pages/CataloguePage'
 import ContactsPage from '../pages/ContactsPage'
@@ -26,6 +27,7 @@ const tabs = [
   { id: 'quotes', label: 'Quotes', icon: Receipt },
   { id: 'designs', label: 'Designs', icon: Palette },
   { id: 'projects', label: 'Projects', icon: FolderKanban },
+  { id: 'invoices', label: 'Invoices', icon: FileSpreadsheet },
   { id: 'brand', label: 'Brand', icon: Sparkles },
   { id: 'brandshop', label: 'Brandshop', icon: Store, requiresBrandshop: true },
   { id: 'warehouse', label: 'Warehouse', icon: Warehouse },
@@ -97,6 +99,7 @@ export default function Layout({ session, contact, company }) {
       case 'quotes': return <QuotesPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('quotes')} clearDeepLink={clearDeepLink} />
       case 'designs': return <DesignsPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('designs')} clearDeepLink={clearDeepLink} />
       case 'projects': return <ProjectsPage company={company} contact={contact} deepLinkId={linkId('projects')} deepLinkReview={deepLink?.tab === 'projects' ? deepLink?.review : null} clearDeepLink={clearDeepLink} />
+      case 'invoices': return <InvoicesPage company={company} contact={contact} />
       case 'brand': return <BrandPage company={company} contact={contact} />
       case 'brandshop': return <BrandshopPage company={company} contact={contact} />
       case 'warehouse': return <WarehousePage company={company} contact={contact} />
