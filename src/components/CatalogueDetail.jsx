@@ -118,6 +118,11 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const [customization, setCustomization] = useState(null) // {id, name, surcharge_cents} or null
   const [pantoneCode, setPantoneCode] = useState('')
   const [pantoneSelected, setPantoneSelected] = useState(false)
+  const [shippingMethod, setShippingMethod] = useState('standard')
+  const [customizationNotes, setCustomizationNotes] = useState('')
+  const [showProposalPicker, setShowProposalPicker] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
 
   // Auto-revert PMS selection when quantity drops below MOQ
   useEffect(() => {
@@ -126,11 +131,6 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       setPantoneCode('')
     }
   }, [qty, sizeBreakdown, item.pantone_match_moq, pantoneSelected])
-  const [shippingMethod, setShippingMethod] = useState('standard')
-  const [customizationNotes, setCustomizationNotes] = useState('')
-  const [showProposalPicker, setShowProposalPicker] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -173,7 +173,15 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     return item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean)
   }, [item.size_variants, item.available_sizes])
 
-  // Pricing math — use effective qty (sum of size breakdown when in size-variants mode)
+  // Sum of per-size quantities (when size variants are in play)
+  const sizeTotal = Object.values(sizeBreakdown).reduce((a, b) => a + (Number(b) || 0), 0)
+  const sizeChosen = !sizes.length || sizeTotal > 0
+  // Effective order qty: per-size sum when sizes apply, otherwise the standalone qty input
+  const effectiveQty = sizes.length ? sizeTotal : qty
+  const belowMOQ = item.moq_sales && effectiveQty < item.moq_sales
+  const canAdd = effectiveQty > 0 && sizeChosen && (!colours.length || colour)
+
+  // Pricing math — use effective qty
   const unitBasePrice = getTierPrice(tiers, effectiveQty)
   const customizationSurcharge = customization?.surcharge_cents ?? 0
   const unitPrice = unitBasePrice != null ? unitBasePrice + customizationSurcharge : null
@@ -196,14 +204,6 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     date.setDate(date.getDate() + days)
     return { days, date }
   })()
-
-  // Sum of per-size quantities (when size variants are in play)
-  const sizeTotal = Object.values(sizeBreakdown).reduce((a, b) => a + (Number(b) || 0), 0)
-  const sizeChosen = !sizes.length || sizeTotal > 0
-  // Effective order qty: per-size sum when sizes apply, otherwise the standalone qty input
-  const effectiveQty = sizes.length ? sizeTotal : qty
-  const belowMOQ = item.moq_sales && effectiveQty < item.moq_sales
-  const canAdd = effectiveQty > 0 && sizeChosen && (!colours.length || colour)
 
   // Strip zero-qty entries before saving size_breakdown
   const cleanSizeBreakdown = () => {
