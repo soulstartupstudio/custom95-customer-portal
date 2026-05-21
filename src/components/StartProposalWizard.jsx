@@ -298,10 +298,19 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
     if (!val || isNaN(n) || n <= 0) delete next[s]
     else next[s] = n
     const total = Object.values(next).reduce((a, b) => a + (Number(b) || 0), 0)
-    onUpdate(idx, { size_breakdown: Object.keys(next).length ? next : null, quantity: total || null })
+    const patch = { size_breakdown: Object.keys(next).length ? next : null, quantity: total || null }
+    // If PMS was selected and dropping below MOQ, revert to default colour
+    if (it.pantone_selected && it.pantone_match_moq && total < it.pantone_match_moq) {
+      patch.pantone_selected = false
+      patch.pantone_code = null
+      patch.colour_choice = it.available_colours?.[0]?.colour_name || null
+    }
+    onUpdate(idx, patch)
   }
 
-  const pantoneBelowMoq = it.pantone_match_available && it.pantone_match_moq && it.quantity && it.quantity < it.pantone_match_moq
+  const pantoneBelowMoq = it.pantone_match_available && it.pantone_match_moq && (it.quantity ?? 0) < it.pantone_match_moq
+  const pantoneSelected = !!it.pantone_selected
+  const pantoneAvailableNow = it.pantone_match_available && !pantoneBelowMoq
 
   return (
     <>
@@ -319,14 +328,15 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               <div className="text-sm font-medium text-gray-900 truncate">{it.description}</div>
               <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                 <span>{it.type === 'custom' ? 'Custom' : it.category || 'Catalogue'}</span>
-                {it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
+                {pantoneSelected
+                  ? <><span>·</span><span className="text-indigo-700">PMS {it.pantone_code || '—'}</span></>
+                  : it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
                 {it.customization_name && (
                   <>
                     <span>·</span>
                     <span className="text-gray-700">{it.customization_name}{surcharge > 0 && <span className="text-amber-700"> (+{formatCents(surcharge)})</span>}</span>
                   </>
                 )}
-                {it.pantone_code && <><span>·</span><span className="text-indigo-700">PMS {it.pantone_code}</span></>}
               </div>
             </div>
           </div>
@@ -337,7 +347,16 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
             min="1"
             value={it.quantity ?? ''}
             disabled={hasSizes && !!it.size_breakdown}
-            onChange={(e) => onUpdate(idx, { quantity: e.target.value ? Number(e.target.value) : null })}
+            onChange={(e) => {
+              const n = e.target.value ? Number(e.target.value) : null
+              const patch = { quantity: n }
+              if (it.pantone_selected && it.pantone_match_moq && (n ?? 0) < it.pantone_match_moq) {
+                patch.pantone_selected = false
+                patch.pantone_code = null
+                patch.colour_choice = it.available_colours?.[0]?.colour_name || null
+              }
+              onUpdate(idx, patch)
+            }}
             className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : undefined}
           />
@@ -358,24 +377,61 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
         <tr className="border-t border-gray-50 bg-gray-50/60">
           <td colSpan={5} className="px-3 py-3">
             <div className="space-y-3">
-              {(it.available_colours?.length ?? 0) > 0 && (
+              {((it.available_colours?.length ?? 0) > 0 || it.pantone_match_available) && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Colour {it.colour_choice && <span className="text-gray-700 font-normal lowercase">· {it.colour_choice}</span>}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {it.available_colours.map((c) => {
-                      const active = it.colour_choice === c.colour_name
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">
+                    Colour {pantoneSelected
+                      ? <span className="text-indigo-700 font-normal normal-case">· Pantone match{it.pantone_code ? ` · ${it.pantone_code}` : ''}</span>
+                      : it.colour_choice && <span className="text-gray-700 font-normal lowercase">· {it.colour_choice}</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(it.available_colours ?? []).map((c) => {
+                      const active = !pantoneSelected && it.colour_choice === c.colour_name
                       return (
                         <button
                           key={c.id}
                           type="button"
-                          onClick={() => onUpdate(idx, { colour_choice: c.colour_name })}
+                          onClick={() => onUpdate(idx, { colour_choice: c.colour_name, pantone_selected: false, pantone_code: null })}
                           className={`w-8 h-8 rounded-md border-2 ${active ? 'border-blue-500 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
                           title={c.colour_name}
                           style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
                         />
                       )
                     })}
+                    {it.pantone_match_available && (
+                      <button
+                        type="button"
+                        disabled={!pantoneAvailableNow}
+                        onClick={() => onUpdate(idx, { pantone_selected: true, colour_choice: null })}
+                        className={`h-8 px-2 rounded-md border-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                          pantoneSelected
+                            ? 'border-indigo-500 ring-1 ring-indigo-200 bg-indigo-50 text-indigo-700'
+                            : pantoneAvailableNow
+                              ? 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700'
+                              : 'border-dashed border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+                        }`}
+                        title={pantoneAvailableNow ? 'Match a specific PMS code' : `Pantone match available from ${it.pantone_match_moq} units (you have ${it.quantity ?? 0})`}
+                      >
+                        <Sparkles size={10} />PMS
+                      </button>
+                    )}
                   </div>
+                  {it.pantone_match_available && (
+                    <div className="text-[10px] text-gray-400 mt-1">
+                      Pantone (PMS) match {it.pantone_match_moq ? `available from ${it.pantone_match_moq} units` : 'available'}.
+                      {!pantoneAvailableNow && it.pantone_match_moq && <span className="text-amber-600"> Increase qty to unlock.</span>}
+                    </div>
+                  )}
+                  {pantoneSelected && pantoneAvailableNow && (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={it.pantone_code || ''}
+                      onChange={(e) => onUpdate(idx, { pantone_code: e.target.value })}
+                      placeholder="e.g. PMS 286 C"
+                      className="mt-2 w-full max-w-xs px-3 py-1.5 border border-indigo-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    />
+                  )}
                 </div>
               )}
               {hasSizes && (
@@ -429,25 +485,6 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
                       )
                     })}
                   </div>
-                </div>
-              )}
-              {it.pantone_match_available && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold flex items-center gap-1.5">
-                    <Sparkles size={11} />Pantone match (PMS code)
-                    {it.pantone_match_moq && (
-                      <span className="text-[10px] normal-case font-normal text-gray-500">
-                        — available from <strong className={pantoneBelowMoq ? 'text-amber-700' : 'text-gray-700'}>{it.pantone_match_moq}</strong> units{pantoneBelowMoq ? ` (you have ${it.quantity ?? 0})` : ''}
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={it.pantone_code || ''}
-                    onChange={(e) => onUpdate(idx, { pantone_code: e.target.value })}
-                    placeholder="e.g. PMS 286 C"
-                    className="w-full max-w-xs px-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  />
                 </div>
               )}
             </div>
@@ -766,6 +803,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       customization_name: prefillItem.customization_name || null,
       customization_surcharge_cents: prefillItem.customization_surcharge_cents ?? null,
       pantone_code: prefillItem.pantone_code || null,
+      pantone_selected: !!prefillItem.pantone_selected,
       pantone_match_available: !!item.pantone_match,
       pantone_match_moq: item.pantone_match_moq || null,
       available_colours: prefillItem.available_colours || [],

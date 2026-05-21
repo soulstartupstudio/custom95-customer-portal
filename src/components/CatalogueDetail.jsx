@@ -117,6 +117,15 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const [sizeBreakdown, setSizeBreakdown] = useState({}) // { S: 10, M: 20, ... }
   const [customization, setCustomization] = useState(null) // {id, name, surcharge_cents} or null
   const [pantoneCode, setPantoneCode] = useState('')
+  const [pantoneSelected, setPantoneSelected] = useState(false)
+
+  // Auto-revert PMS selection when quantity drops below MOQ
+  useEffect(() => {
+    if (pantoneSelected && item.pantone_match_moq && (Object.values(sizeBreakdown).reduce((a, b) => a + (Number(b) || 0), 0) || qty) < item.pantone_match_moq) {
+      setPantoneSelected(false)
+      setPantoneCode('')
+    }
+  }, [qty, sizeBreakdown, item.pantone_match_moq, pantoneSelected])
   const [shippingMethod, setShippingMethod] = useState('standard')
   const [customizationNotes, setCustomizationNotes] = useState('')
   const [showProposalPicker, setShowProposalPicker] = useState(false)
@@ -174,6 +183,7 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
 
   // Pantone match needs a minimum order qty — flag if not met
   const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && effectiveQty < item.pantone_match_moq
+  const pantoneAvailableNow = item.pantone_match && !pantoneMOQUnmet
 
   // ETA: lead_time_days + production_time_days + shipping extra
   const eta = (() => {
@@ -206,19 +216,20 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
 
   const insertItem = async (proposalId) => {
     setBusy(true); setError(null)
+    const useP = pantoneSelected && pantoneAvailableNow
     const { error: err } = await supabase.from('proposal_requested_items').insert({
       proposal_id: proposalId,
       company_id: company.id,
       catalogue_item_id: item.id,
       description: item.name,
       quantity: effectiveQty,
-      colour_choice: colour?.colour_name || null,
+      colour_choice: useP ? null : (colour?.colour_name || null),
       size_breakdown: cleanSizeBreakdown(),
       shipping_method: shippingMethod,
       customization_id: customization?.id || null,
       customization_name: customization?.name || null,
       customization_surcharge_cents: customization?.surcharge_cents ?? null,
-      pantone_code: pantoneCode.trim() || null,
+      pantone_code: useP ? (pantoneCode.trim() || null) : null,
       notes: customizationNotes.trim() || null,
       requested_by_contact_id: contact.id,
     })
@@ -232,16 +243,18 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const handleAddClick = () => setShowProposalPicker(true)
 
   const handleStartNewProposal = () => {
+    const useP = pantoneSelected && pantoneAvailableNow
     onStartNewProposal?.({
       catalogue_item: item,
       quantity: effectiveQty,
-      colour_choice: colour?.colour_name || null,
+      colour_choice: useP ? null : (colour?.colour_name || null),
       size_breakdown: cleanSizeBreakdown(),
       shipping_method: shippingMethod,
       customization_id: customization?.id || null,
       customization_name: customization?.name || null,
       customization_surcharge_cents: customization?.surcharge_cents ?? null,
-      pantone_code: pantoneCode.trim() || null,
+      pantone_code: useP ? (pantoneCode.trim() || null) : null,
+      pantone_selected: useP,
       notes: customizationNotes.trim() || null,
       photo_url: allPhotos[0]?.url || null,
       tiers,
@@ -338,24 +351,25 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             </a>
           )}
 
-          {/* Colour picker */}
-          {colours.length > 0 && (
+          {/* Colour picker + inline Pantone match tile */}
+          {(colours.length > 0 || item.pantone_match) && (
             <div>
-              <div className="text-xs text-gray-500 mb-2 font-semibold">Colour {colour && <span className="text-gray-700 font-normal">· {colour.colour_name}</span>}</div>
-              <div className="flex flex-wrap gap-2">
+              <div className="text-xs text-gray-500 mb-2 font-semibold">
+                Colour {pantoneSelected
+                  ? <span className="text-indigo-700 font-normal">· Pantone match{pantoneCode ? ` · ${pantoneCode}` : ''}</span>
+                  : colour && <span className="text-gray-700 font-normal">· {colour.colour_name}</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 {colours.map((c) => {
-                  const active = colour?.id === c.id
+                  const active = !pantoneSelected && colour?.id === c.id
                   return (
                     <button
                       key={c.id}
-                      onClick={() => setColour(c)}
+                      onClick={() => { setColour(c); setPantoneSelected(false); setPantoneCode('') }}
                       className={`group relative w-12 h-12 rounded-lg border-2 ${active ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
                       title={c.colour_name}
                     >
-                      <div
-                        className="w-full h-full rounded-md"
-                        style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
-                      />
+                      <div className="w-full h-full rounded-md" style={{ backgroundColor: c.hex_code || '#e5e7eb' }} />
                       {active && (
                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
                           <Check size={10} className="text-white" />
@@ -364,7 +378,41 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
                     </button>
                   )
                 })}
+                {item.pantone_match && (
+                  <button
+                    disabled={!pantoneAvailableNow}
+                    onClick={() => setPantoneSelected(true)}
+                    className={`h-12 px-3 rounded-lg border-2 inline-flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                      pantoneSelected
+                        ? 'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50 text-indigo-700'
+                        : pantoneAvailableNow
+                          ? 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700'
+                          : 'border-dashed border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+                    }`}
+                    title={pantoneAvailableNow ? 'Match a specific PMS code' : `Min ${item.pantone_match_moq} units required (currently ${effectiveQty})`}
+                  >
+                    <Sparkles size={12} />PMS
+                  </button>
+                )}
               </div>
+              {item.pantone_match && (
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Pantone (PMS) match {item.pantone_match_moq ? `available from ${item.pantone_match_moq} units` : 'available'}.
+                  {!pantoneAvailableNow && item.pantone_match_moq && (
+                    <span className="text-amber-600"> Currently {effectiveQty} — add {item.pantone_match_moq - effectiveQty} more to unlock.</span>
+                  )}
+                </div>
+              )}
+              {pantoneSelected && pantoneAvailableNow && (
+                <input
+                  type="text"
+                  autoFocus
+                  value={pantoneCode}
+                  onChange={(e) => setPantoneCode(e.target.value)}
+                  placeholder="e.g. PMS 286 C"
+                  className="mt-2 w-full max-w-xs px-3 py-1.5 border border-indigo-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              )}
             </div>
           )}
 
@@ -436,35 +484,6 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
                   )
                 })}
               </div>
-            </div>
-          )}
-
-          {/* Pantone match block — input + MOQ warning */}
-          {item.pantone_match && (
-            <div className="border border-indigo-200 bg-indigo-50/50 rounded-lg p-3">
-              <div className="text-xs font-semibold text-indigo-900 flex items-center gap-1.5 mb-1">
-                <Sparkles size={12} />Pantone (PMS) match available
-                {item.pantone_match_moq && (
-                  <span className="text-[10px] font-normal text-indigo-700">
-                    · from <strong>{item.pantone_match_moq}</strong> units
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-indigo-800/80 mb-2">
-                Enter a PMS code below and we'll match it exactly during production.
-              </p>
-              <input
-                type="text"
-                value={pantoneCode}
-                onChange={(e) => setPantoneCode(e.target.value)}
-                placeholder="e.g. PMS 286 C"
-                className="w-full max-w-xs px-3 py-1.5 border border-indigo-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-              {pantoneMOQUnmet && (
-                <div className="text-xs text-amber-700 mt-2 inline-flex items-center gap-1">
-                  Below pantone MOQ — currently {effectiveQty}, need {item.pantone_match_moq}.
-                </div>
-              )}
             </div>
           )}
 
