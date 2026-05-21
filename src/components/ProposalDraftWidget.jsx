@@ -32,7 +32,7 @@ export default function ProposalDraftWidget({ draft, company, onResume, onDiscar
   }
 
   return (
-    <div className="fixed bottom-20 right-6 z-[60] w-[320px] shadow-xl rounded-2xl overflow-hidden">
+    <div className="fixed bottom-20 sm:bottom-20 right-3 sm:right-6 left-3 sm:left-auto z-[60] sm:w-[320px] max-w-[360px] mx-auto sm:mx-0 shadow-xl rounded-2xl overflow-hidden">
       {/* Gradient header — always visible, click to toggle */}
       <button
         type="button"

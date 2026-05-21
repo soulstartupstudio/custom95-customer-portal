@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
-  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet
+  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X
 } from 'lucide-react'
 import DashboardPage from '../pages/DashboardPage'
 import SettingsPage from '../pages/SettingsPage'
@@ -111,18 +111,62 @@ export default function Layout({ session, contact, company }) {
   }
 
   const contactName = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') || session.user.email
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  // Close the mobile nav whenever the active tab changes
+  useEffect(() => { setMobileNavOpen(false) }, [activeTab])
+  const activeLabel = visibleTabs.find((t) => t.id === activeTab)?.label || ''
 
   return (
     <div className="min-h-screen flex">
-      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col fixed h-full">
-        <div className="p-5 border-b border-gray-200">
-          <h1 className="text-lg font-bold text-gray-900">Custom95</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{company?.name || 'Customer Portal'}</p>
+      {/* MOBILE TOP BAR (md:hidden) */}
+      <header className="md:hidden fixed top-0 inset-x-0 z-30 bg-white border-b border-gray-200 h-14 flex items-center px-3 gap-2">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          className="p-2 -ml-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 leading-tight">{activeLabel || 'Custom95'}</div>
+          <div className="text-[11px] text-gray-400 truncate leading-tight">{company?.name || 'Customer Portal'}</div>
+        </div>
+        <button
+          onClick={openWizard}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700"
+        >
+          <Plus size={13} />New
+        </button>
+      </header>
+
+      {/* MOBILE NAV OVERLAY */}
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileNavOpen(false)} />
+      )}
+
+      {/* SIDEBAR — fixed on desktop, slide-out on mobile */}
+      <aside
+        className={`fixed top-0 left-0 z-50 w-64 md:w-56 h-full bg-white border-r border-gray-200 flex flex-col transition-transform md:translate-x-0 ${
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Custom95</h1>
+            <p className="text-xs text-gray-400 mt-0.5">{company?.name || 'Customer Portal'}</p>
+          </div>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="md:hidden -mr-1 text-gray-400 hover:text-gray-600 p-1"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <div className="px-3 pt-3">
           <button
-            onClick={openWizard}
+            onClick={() => { setMobileNavOpen(false); openWizard() }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             <Plus size={16} />Start proposal
@@ -166,8 +210,8 @@ export default function Layout({ session, contact, company }) {
         </div>
       </aside>
 
-      <main className="flex-1 ml-56">
-        <div className="p-6 max-w-7xl">
+      <main className="flex-1 md:ml-56 pt-14 md:pt-0">
+        <div className="p-4 sm:p-6 max-w-7xl">
           {renderContent()}
         </div>
       </main>

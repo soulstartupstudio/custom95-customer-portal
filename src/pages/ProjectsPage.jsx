@@ -115,7 +115,7 @@ function Kanban({ projects, onOpen }) {
           </div>
         </div>
       )}
-      <div className="overflow-x-auto -mx-6 px-6 pb-2">
+      <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2">
         <div className="flex gap-3 min-w-max">
           {JOURNEY.map((stage, i) => {
             const items = byStage[stage.id] ?? []
@@ -688,7 +688,8 @@ export default function ProjectsPage({ company, contact, deepLinkId, deepLinkRev
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [view, setView] = useState('kanban')
+  // Default to list view on small screens (Kanban is unusable < ~640px)
+  const [view, setView] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 640px)').matches ? 'kanban' : 'list'))
   const [reviewProject, setReviewProject] = useState(null)
 
   useEffect(() => {

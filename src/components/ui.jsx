@@ -190,7 +190,7 @@ export function Table({ columns, rows, onRowClick, emptyLabel = 'No records.' })
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               {columns.map((c) => (
-                <th key={c.key} className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                <th key={c.key} className="px-3 sm:px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">
                   {c.label}
                 </th>
               ))}
@@ -205,7 +205,7 @@ export function Table({ columns, rows, onRowClick, emptyLabel = 'No records.' })
                 className={`border-b border-gray-50 last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}`}
               >
                 {columns.map((c) => (
-                  <td key={c.key} className="px-5 py-3 text-gray-900">
+                  <td key={c.key} className="px-3 sm:px-5 py-3 text-gray-900 align-top">
                     {c.render ? c.render(row) : row[c.key]}
                   </td>
                 ))}

@@ -997,8 +997,8 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-3xl bg-white rounded-xl shadow-xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-3xl bg-white sm:rounded-xl shadow-xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-blue-600" />
@@ -1007,25 +1007,25 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
 
-        <div className="px-6 pt-4">
-          <div className="flex items-center gap-2">
+        <div className="px-4 sm:px-6 pt-4">
+          <div className="flex items-center gap-1 sm:gap-2">
             {STEPS.map((s, i) => (
-              <div key={s.id} className="flex items-center gap-2 flex-1">
-                <div className={`flex items-center gap-2 ${i === step ? 'text-blue-600' : i < step ? 'text-gray-900' : 'text-gray-400'}`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+              <div key={s.id} className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+                <div className={`flex items-center gap-1.5 sm:gap-2 ${i === step ? 'text-blue-600' : i < step ? 'text-gray-900' : 'text-gray-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
                     i < step ? 'bg-blue-600 text-white' : i === step ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'
                   }`}>
                     {i < step ? <Check size={12} /> : i + 1}
                   </div>
-                  <span className="text-xs font-medium">{s.label}</span>
+                  <span className={`text-xs font-medium ${i === step ? '' : 'hidden sm:inline'}`}>{s.label}</span>
                 </div>
-                {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < step ? 'bg-blue-600' : 'bg-gray-200'}`} />}
+                {i < STEPS.length - 1 && <div className={`flex-1 h-px min-w-[8px] ${i < step ? 'bg-blue-600' : 'bg-gray-200'}`} />}
               </div>
             ))}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
           {step === 0 && (
             <div className="space-y-4">
               <div>
@@ -1230,7 +1230,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex items-center justify-between">
           <SecondaryButton onClick={step === 0 ? onClose : () => setStep(step - 1)} disabled={submitting}>
             <ChevronLeft size={14} />{step === 0 ? 'Cancel' : 'Back'}
           </SecondaryButton>

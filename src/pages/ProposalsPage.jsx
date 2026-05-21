@@ -141,7 +141,7 @@ function Kanban({ proposals, projectsByProposalId, onOpen }) {
   }, [proposals])
 
   return (
-    <div className="overflow-x-auto -mx-6 px-6 pb-2">
+    <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2">
       <div className="flex gap-3 min-w-max">
         {JOURNEY.map((stage, i) => {
           const items = byStage[stage.id] ?? []
@@ -781,7 +781,8 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
   const [projectsByProposalId, setProjectsByProposalId] = useState({})
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [view, setView] = useState('kanban')
+  // Default to list view on small screens (Kanban is unusable < ~640px)
+  const [view, setView] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 640px)').matches ? 'kanban' : 'list'))
 
   useEffect(() => {
     if (!company?.id) return
