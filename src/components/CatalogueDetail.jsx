@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   X, Package, Leaf, Search, Plus, Check, Truck, Zap, Wallet, Clock, Image as ImageIcon,
-  ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star,
+  ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star, Paintbrush,
 } from 'lucide-react'
 import { Badge, PrimaryButton, SecondaryButton, formatCents, formatDate } from './ui'
 
@@ -107,6 +107,7 @@ function ProposalPicker({ company, contact, item, choices, qty, onClose, onSelec
 export default function CatalogueDetail({ item, company, contact, onClose, onAddedToProposal, onStartNewProposal }) {
   const [tiers, setTiers] = useState([])
   const [colours, setColours] = useState([])
+  const [customizations, setCustomizations] = useState([])
   const [photos, setPhotos] = useState([])
   const [photoIdx, setPhotoIdx] = useState(0)
 
@@ -114,6 +115,7 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const [qty, setQty] = useState(item.moq_sales || 50)
   const [colour, setColour] = useState(null) // {colour_name, hex_code} or null
   const [size, setSize] = useState(null)
+  const [customization, setCustomization] = useState(null) // {id, name, surcharge_cents} or null
   const [shippingMethod, setShippingMethod] = useState('standard')
   const [customizationNotes, setCustomizationNotes] = useState('')
   const [showProposalPicker, setShowProposalPicker] = useState(false)
@@ -125,13 +127,19 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', item.id).order('qty_from'),
       supabase.from('catalogue_colour_options').select('*').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
       supabase.from('catalogue_photos').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
-    ]).then(([t, c, p]) => {
+      supabase.from('catalogue_customizations').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
+    ]).then(([t, c, p, cz]) => {
       // hide sample tier rows from customer
       setTiers((t.data ?? []).filter((row) => !row.is_sample_tier))
       setColours(c.data ?? [])
       setPhotos(p.data ?? [])
+      setCustomizations(cz.data ?? [])
       // pre-select first colour if any
       if ((c.data ?? []).length > 0) setColour((c.data ?? [])[0])
+      // pre-select default customization (or first)
+      const cust = (cz.data ?? [])
+      const def = cust.find((x) => x.is_default) || cust[0]
+      if (def) setCustomization(def)
     })
   }, [item.id])
 
@@ -156,10 +164,15 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   }, [item.size_variants, item.available_sizes])
 
   // Pricing math
-  const unitPrice = getTierPrice(tiers, qty)
+  const unitBasePrice = getTierPrice(tiers, qty)
+  const customizationSurcharge = customization?.surcharge_cents ?? 0
+  const unitPrice = unitBasePrice != null ? unitBasePrice + customizationSurcharge : null
   const itemTotal = unitPrice != null ? unitPrice * qty : null
   const shipCost = shippingCost(item, shippingMethod, qty)
   const total = itemTotal != null ? itemTotal + (shipCost ?? 0) : null
+
+  // Pantone match needs a minimum order qty — flag if not met
+  const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && qty < item.pantone_match_moq
 
   // ETA: lead_time_days + production_time_days + shipping extra
   const eta = (() => {
@@ -187,6 +200,9 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       colour_choice: colour?.colour_name || null,
       size_choice: size || null,
       shipping_method: shippingMethod,
+      customization_id: customization?.id || null,
+      customization_name: customization?.name || null,
+      customization_surcharge_cents: customization?.surcharge_cents ?? null,
       notes: customizationNotes.trim() || null,
       requested_by_contact_id: contact.id,
     })
@@ -206,6 +222,9 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       colour_choice: colour?.colour_name || null,
       size_choice: size || null,
       shipping_method: shippingMethod,
+      customization_id: customization?.id || null,
+      customization_name: customization?.name || null,
+      customization_surcharge_cents: customization?.surcharge_cents ?? null,
       notes: customizationNotes.trim() || null,
       photo_url: allPhotos[0]?.url || null,
       tiers,
@@ -347,6 +366,51 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             </div>
           )}
 
+          {/* Customization picker */}
+          {customizations.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2 font-semibold flex items-center gap-1.5">
+                <Paintbrush size={12} />Customization
+                {customization && <span className="text-gray-700 font-normal">· {customization.name}</span>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {customizations.map((cz) => {
+                  const active = customization?.id === cz.id
+                  return (
+                    <button
+                      key={cz.id}
+                      onClick={() => setCustomization(cz)}
+                      className={`p-3 rounded-lg border-2 text-left transition-colors ${active ? 'border-blue-500 ring-1 ring-blue-200 bg-white' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-gray-900 flex items-center gap-1">
+                            {cz.name}
+                            {cz.is_default && <span className="text-[9px] uppercase text-gray-400">Default</span>}
+                          </div>
+                          {cz.description && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{cz.description}</div>}
+                        </div>
+                        {active && <Check size={14} className="text-blue-600 flex-shrink-0" />}
+                      </div>
+                      <div className="text-xs mt-2 font-medium">
+                        {cz.surcharge_cents > 0
+                          ? <span className="text-amber-700">+{formatCents(cz.surcharge_cents)} / unit</span>
+                          : <span className="text-green-700">Included</span>}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Pantone match MOQ warning */}
+          {pantoneMOQUnmet && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 inline-flex items-center gap-1.5">
+              <Sparkles size={12} />Pantone match requires at least <strong>{item.pantone_match_moq}</strong> units (you have {qty}).
+            </div>
+          )}
+
           {/* Quantity */}
           <div>
             <div className="text-xs text-gray-500 mb-2 font-semibold">Quantity</div>
@@ -449,9 +513,15 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">Estimate</div>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-700">{qty} × {unitPrice != null ? formatCents(unitPrice) : 'TBD'}</span>
-                <span className="text-gray-900 font-medium">{itemTotal != null ? formatCents(itemTotal) : '—'}</span>
+                <span className="text-gray-700">{qty} × {unitBasePrice != null ? formatCents(unitBasePrice) : 'TBD'}</span>
+                <span className="text-gray-900 font-medium">{unitBasePrice != null ? formatCents(unitBasePrice * qty) : '—'}</span>
               </div>
+              {customizationSurcharge > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-600">{customization?.name} (+{formatCents(customizationSurcharge)}/unit)</span>
+                  <span className="text-gray-700">+{formatCents(customizationSurcharge * qty)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs">
                 <span className="text-gray-600">{SHIPPING_LABELS[shippingMethod].label} shipping</span>
                 <span className="text-gray-700">{shipCost != null ? formatCents(shipCost) : 'Quote'}</span>

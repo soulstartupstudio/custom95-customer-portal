@@ -277,6 +277,154 @@ function CustomItemForm({ company, onAdd }) {
   )
 }
 
+// --- CART ROW with inline options ---
+function CartRow({ item: it, idx, onUpdate, onRemove }) {
+  const [expanded, setExpanded] = useState(false)
+  const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
+  const surcharge = it.customization_surcharge_cents ?? 0
+  const unitPrice = baseUnit != null ? baseUnit + surcharge : null
+  const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity : null
+  const hasOptions = it.type === 'catalogue' && (
+    (it.available_colours?.length ?? 0) > 0 ||
+    (it.available_sizes?.length ?? 0) > 0 ||
+    (it.available_customizations?.length ?? 0) > 0
+  )
+
+  return (
+    <>
+      <tr className="border-t border-gray-100">
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-2">
+            {it.photo_url ? (
+              <img src={it.photo_url} alt="" className="w-8 h-8 rounded object-cover" onError={(e) => { e.target.style.display = 'none' }} />
+            ) : (
+              <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                <Package size={14} className="text-gray-400" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900 truncate">{it.description}</div>
+              <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
+                <span>{it.type === 'custom' ? 'Custom' : it.category || 'Catalogue'}</span>
+                {it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
+                {it.size_choice && <><span>·</span><span>{it.size_choice}</span></>}
+                {it.customization_name && (
+                  <>
+                    <span>·</span>
+                    <span className="text-gray-700">{it.customization_name}{surcharge > 0 && <span className="text-amber-700"> (+{formatCents(surcharge)})</span>}</span>
+                  </>
+                )}
+                {hasOptions && (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded((e) => !e)}
+                    className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
+                  >{expanded ? 'Hide options' : 'Edit options'}</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td className="px-3 py-2">
+          <input
+            type="number"
+            min="1"
+            value={it.quantity ?? ''}
+            onChange={(e) => onUpdate(idx, { quantity: e.target.value ? Number(e.target.value) : null })}
+            className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </td>
+        <td className="px-3 py-2 text-right text-xs text-gray-700">
+          {unitPrice != null ? formatCents(unitPrice) : <span className="text-gray-400">TBD</span>}
+        </td>
+        <td className="px-3 py-2 text-right text-xs font-medium text-gray-900">
+          {subtotal != null ? formatCents(subtotal) : <span className="text-gray-400">TBD</span>}
+        </td>
+        <td className="px-2 py-2">
+          <button onClick={() => onRemove(idx)} className="text-gray-400 hover:text-red-600">
+            <Trash2 size={14} />
+          </button>
+        </td>
+      </tr>
+      {expanded && hasOptions && (
+        <tr className="border-t border-gray-50 bg-gray-50/60">
+          <td colSpan={5} className="px-3 py-3">
+            <div className="space-y-3">
+              {(it.available_colours?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Colour {it.colour_choice && <span className="text-gray-700 font-normal lowercase">· {it.colour_choice}</span>}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {it.available_colours.map((c) => {
+                      const active = it.colour_choice === c.colour_name
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => onUpdate(idx, { colour_choice: c.colour_name })}
+                          className={`w-8 h-8 rounded-md border-2 ${active ? 'border-blue-500 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
+                          title={c.colour_name}
+                          style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {(it.available_sizes?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Size {it.size_choice && <span className="text-gray-700 font-normal lowercase">· {it.size_choice}</span>}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {it.available_sizes.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => onUpdate(idx, { size_choice: s })}
+                        className={`px-2.5 py-1 rounded text-xs font-medium border ${it.size_choice === s ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 text-gray-700 bg-white'}`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(it.available_customizations?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Customization</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {it.available_customizations.map((cz) => {
+                      const active = it.customization_id === cz.id
+                      return (
+                        <button
+                          key={cz.id}
+                          type="button"
+                          onClick={() => onUpdate(idx, {
+                            customization_id: cz.id,
+                            customization_name: cz.name,
+                            customization_surcharge_cents: cz.surcharge_cents ?? 0,
+                          })}
+                          className={`p-2 rounded border-2 text-left ${active ? 'border-blue-500 ring-1 ring-blue-200 bg-white' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                        >
+                          <div className="text-xs font-semibold text-gray-900 flex items-center justify-between gap-1">
+                            <span className="truncate">{cz.name}</span>
+                            {cz.surcharge_cents > 0
+                              ? <span className="text-[10px] text-amber-700">+{formatCents(cz.surcharge_cents)}</span>
+                              : <span className="text-[10px] text-green-700">Free</span>}
+                          </div>
+                          {cz.description && <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{cz.description}</div>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 // --- CART TABLE ---
 function Cart({ items, onUpdate, onRemove }) {
   if (items.length === 0) {
@@ -299,51 +447,9 @@ function Cart({ items, onUpdate, onRemove }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((it, idx) => {
-            const unitPrice = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
-            const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity : null
-            return (
-              <tr key={idx} className="border-t border-gray-100">
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    {it.photo_url ? (
-                      <img src={it.photo_url} alt="" className="w-8 h-8 rounded object-cover" onError={(e) => { e.target.style.display = 'none' }} />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-                        <Package size={14} className="text-gray-400" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{it.description}</div>
-                      <div className="text-xs text-gray-500">
-                        {it.type === 'custom' ? 'Custom' : it.category || 'Catalogue'}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  <input
-                    type="number"
-                    min="1"
-                    value={it.quantity ?? ''}
-                    onChange={(e) => onUpdate(idx, { quantity: e.target.value ? Number(e.target.value) : null })}
-                    className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </td>
-                <td className="px-3 py-2 text-right text-xs text-gray-700">
-                  {unitPrice != null ? formatCents(unitPrice) : <span className="text-gray-400">TBD</span>}
-                </td>
-                <td className="px-3 py-2 text-right text-xs font-medium text-gray-900">
-                  {subtotal != null ? formatCents(subtotal) : <span className="text-gray-400">TBD</span>}
-                </td>
-                <td className="px-2 py-2">
-                  <button onClick={() => onRemove(idx)} className="text-gray-400 hover:text-red-600">
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            )
-          })}
+          {items.map((it, idx) => (
+            <CartRow key={idx} item={it} idx={idx} onUpdate={onUpdate} onRemove={onRemove} />
+          ))}
         </tbody>
       </table>
     </div>
@@ -623,6 +729,10 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       colour_choice: prefillItem.colour_choice || null,
       size_choice: prefillItem.size_choice || null,
       shipping_method: prefillItem.shipping_method || null,
+      customization_id: prefillItem.customization_id || null,
+      customization_name: prefillItem.customization_name || null,
+      customization_surcharge_cents: prefillItem.customization_surcharge_cents ?? null,
+      // No available_* lists since they were chosen already in CatalogueDetail; user can edit in the wizard cart later if needed.
     }]
   })
   const [addressIds, setAddressIds] = useState([])
@@ -642,7 +752,17 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     if (k === 'shipment_type') setAddressIds([])
   }
 
-  const addFromCatalogue = (item, tiers) => {
+  const addFromCatalogue = async (item, tiers) => {
+    // Fetch colour + customization options so the wizard cart can offer the choices
+    const [csRes, czRes] = await Promise.all([
+      supabase.from('catalogue_colour_options').select('id, colour_name, hex_code').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
+      supabase.from('catalogue_customizations').select('id, name, description, surcharge_cents, is_default, sort_order').eq('catalogue_item_id', item.id).order('sort_order'),
+    ])
+    const colours = csRes.data ?? []
+    const customizations = czRes.data ?? []
+    const defaultCust = customizations.find((c) => c.is_default) || customizations[0] || null
+    const sizesParsed = item.size_variants && item.available_sizes
+      ? item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) : []
     setItems((arr) => [
       ...arr,
       {
@@ -655,6 +775,16 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         reference_url: null,
         notes: null,
         tiers,
+        // catalogue options (for inline picker)
+        available_colours: colours,
+        available_sizes: sizesParsed,
+        available_customizations: customizations,
+        // chosen values
+        colour_choice: colours[0]?.colour_name || null,
+        size_choice: null,
+        customization_id: defaultCust?.id || null,
+        customization_name: defaultCust?.name || null,
+        customization_surcharge_cents: defaultCust?.surcharge_cents ?? null,
       },
     ])
   }
@@ -667,8 +797,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     let total = 0
     let hasTBD = false
     for (const it of items) {
-      const unit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
-      if (unit != null && it.quantity) total += unit * it.quantity
+      const base = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
+      const surcharge = it.customization_surcharge_cents ?? 0
+      if (base != null && it.quantity) total += (base + surcharge) * it.quantity
       else hasTBD = true
     }
     return { total, hasTBD }
@@ -730,6 +861,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         colour_choice: it.colour_choice || null,
         size_choice: it.size_choice || null,
         shipping_method: it.shipping_method || null,
+        customization_id: it.customization_id || null,
+        customization_name: it.customization_name || null,
+        customization_surcharge_cents: it.customization_surcharge_cents ?? null,
         requested_by_contact_id: contact.id,
       }))
       const { error: itemsErr } = await supabase.from('proposal_requested_items').insert(rows)

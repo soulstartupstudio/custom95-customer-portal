@@ -138,10 +138,12 @@ function ItemTrackingCard({ item, design, teamAssets = [], onOpenDesign }) {
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-gray-900">{item.description}</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            Qty {item.quantity}
-            {item.unit_sales_price_cents != null && <> · {formatCents(item.unit_sales_price_cents)} each</>}
-            {item.total_sales_cents != null && <> · {formatCents(item.total_sales_cents)} total</>}
+          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap">
+            <span>Qty {item.quantity}</span>
+            {item.unit_sales_price_cents != null && <><span>·</span><span>{formatCents(item.unit_sales_price_cents)} each</span></>}
+            {item.total_sales_cents != null && <><span>·</span><span>{formatCents(item.total_sales_cents)} total</span></>}
+            {item.selected_colour && <><span>·</span><span>{item.selected_colour}</span></>}
+            {item.customization_notes && <><span>·</span><span className="text-gray-700 italic line-clamp-1">{item.customization_notes.split('\n')[0]}</span></>}
           </div>
         </div>
         <StatusBadge status={item.status} />
