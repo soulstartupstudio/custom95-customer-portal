@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Receipt, Download, ExternalLink, CheckCircle2, AlertTriangle, Clock, Search } from 'lucide-react'
+import { Receipt, Download, CheckCircle2, AlertTriangle, Clock, Search } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Table, Badge, formatCents, formatDate } from '../components/ui'
 import { downloadInvoicePdf } from '../lib/downloadInvoice'
 
@@ -40,7 +40,7 @@ export default function InvoicesPage({ company }) {
       setLoading(true)
       const { data } = await supabase
         .from('invoices')
-        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, moneybird_invoice_url, project_id, projects(name, project_number, proposal_id, proposals(proposal_number))')
+        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, project_id, projects(name, project_number, proposal_id, proposals(proposal_number))')
         .eq('company_id', company.id)
         .neq('status', 'draft') // hide pre-finalised
         .order('invoice_date', { ascending: false, nullsFirst: false })
@@ -99,7 +99,7 @@ export default function InvoicesPage({ company }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Invoices" subtitle="Your invoices from Custom95 — download the PDF or open in Moneybird." />
+      <PageHeader title="Invoices" subtitle="Your invoices from Custom95 — download the PDF anytime." />
 
       {/* Stat strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -211,26 +211,15 @@ export default function InvoicesPage({ company }) {
               key: 'actions',
               label: '',
               render: (r) => (
-                <div className="flex items-center justify-end gap-1.5">
+                <div className="flex items-center justify-end">
                   <button
                     onClick={() => handleDownload(r)}
                     disabled={downloadingId === r.id}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
                     title="Download PDF"
                   >
-                    <Download size={12} />{downloadingId === r.id ? '…' : 'PDF'}
+                    <Download size={12} />{downloadingId === r.id ? 'Preparing…' : 'Download PDF'}
                   </button>
-                  {r.moneybird_invoice_url && (
-                    <a
-                      href={r.moneybird_invoice_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 hover:bg-gray-50"
-                      title="Open in Moneybird"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                  )}
                 </div>
               ),
             },

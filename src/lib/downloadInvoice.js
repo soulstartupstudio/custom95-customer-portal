@@ -8,20 +8,21 @@ import { supabase } from './supabase'
  * Returns { ok: true } on success; throws Error on failure.
  * If the function returns a `redirect_url` (final fallback), this opens it in a new tab.
  */
+// Strip any internal-tooling references before surfacing errors to the customer.
+const scrub = (msg) => String(msg || '')
+  .replace(/Moneybird/gi, 'our billing system')
+  .replace(/moneybird/gi, 'our billing system')
+
 export async function downloadInvoicePdf(invoiceId) {
   const { data, error } = await supabase.functions.invoke('moneybird', {
     body: { action: 'download_invoice_pdf', invoice_id: invoiceId },
   })
-  if (error) throw new Error(error.message || 'Download failed')
-  if (data?.error) throw new Error(data.error)
+  if (error) throw new Error(scrub(error.message) || 'Download failed')
+  if (data?.error) throw new Error(scrub(data.error))
 
-  // Final fallback: function couldn't fetch the binary, returned the MB URL
-  if (data?.redirect_url) {
-    window.open(data.redirect_url, '_blank', 'noopener,noreferrer')
-    return { ok: true, redirected: true }
-  }
-
-  if (!data?.base64) throw new Error('No PDF returned')
+  // If the function couldn't fetch the binary (very rare), just fail loudly —
+  // we don't want to leak the internal billing-system URL to customers.
+  if (!data?.base64) throw new Error('Invoice PDF is not available yet. Please try again later.')
 
   // Decode base64 → Blob → trigger download
   const bin = atob(data.base64)

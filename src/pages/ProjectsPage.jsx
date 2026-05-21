@@ -333,7 +333,7 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
         supabase.from('project_line_items_client').select('*').eq('project_id', project.id).order('sort_order'),
         supabase.from('project_files').select('id, file_name, file_type, storage_url, created_at').eq('project_id', project.id).order('created_at', { ascending: false }),
         supabase.from('invoices')
-          .select('id, invoice_number, status, subtotal_cents, vat_rate, vat_amount_cents, discount_cents, total_cents, invoice_date, due_date, paid_at, payment_method, invoice_pdf_url, moneybird_invoice_url, notes')
+          .select('id, invoice_number, status, subtotal_cents, vat_rate, vat_amount_cents, discount_cents, total_cents, invoice_date, due_date, paid_at, payment_method, notes')
           .eq('project_id', project.id)
           .order('invoice_date', { ascending: false }),
       ])
