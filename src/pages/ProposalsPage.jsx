@@ -476,7 +476,13 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
                           <span>·</span>
                           <span>{i.catalogue_item_id ? 'catalogue' : 'custom'}</span>
                           {i.colour_choice && <><span>·</span><span>{i.colour_choice}</span></>}
-                          {i.customization_name && <><span>·</span><span className="text-gray-700">{i.customization_name}{i.customization_surcharge_cents > 0 && <span className="text-amber-700"> (+{formatCents(i.customization_surcharge_cents)})</span>}</span></>}
+                          {Array.isArray(i.customization_choices) && i.customization_choices.length > 0 ? (
+                            i.customization_choices.map((c, ci) => (
+                              <span key={ci} className="inline-flex items-center"><span>·</span><span className="ml-1 text-gray-700">{c.name}{c.surcharge_cents > 0 && <span className="text-amber-700"> (+{formatCents(c.surcharge_cents)})</span>}</span></span>
+                            ))
+                          ) : i.customization_name && (
+                            <><span>·</span><span className="text-gray-700">{i.customization_name}{i.customization_surcharge_cents > 0 && <span className="text-amber-700"> (+{formatCents(i.customization_surcharge_cents)})</span>}</span></>
+                          )}
                           {i.pantone_code && <><span>·</span><span className="text-indigo-700">PMS {i.pantone_code}</span></>}
                           {!isCustomer && <Badge tone="gray">Added by team</Badge>}
                         </div>

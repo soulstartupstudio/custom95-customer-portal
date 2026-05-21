@@ -282,7 +282,8 @@ function CustomItemForm({ company, onAdd }) {
 function CartRow({ item: it, idx, onUpdate, onRemove }) {
   const hasSizes = (it.available_sizes?.length ?? 0) > 0
   const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
-  const surcharge = it.customization_surcharge_cents ?? 0
+  const selectedCustomizations = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
+  const surcharge = selectedCustomizations.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
   const unitPrice = baseUnit != null ? baseUnit + surcharge : null
   const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity : null
   const hasOptions = it.type === 'catalogue' && (
@@ -332,10 +333,10 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
                 {pantoneSelected
                   ? <><span>·</span><span className="text-indigo-700">PMS {it.pantone_code || '—'}</span></>
                   : it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
-                {it.customization_name && (
+                {selectedCustomizations.length > 0 && (
                   <>
                     <span>·</span>
-                    <span className="text-gray-700">{it.customization_name}{surcharge > 0 && <span className="text-amber-700"> (+{formatCents(surcharge)})</span>}</span>
+                    <span className="text-gray-700">{selectedCustomizations.map((c) => c.name).join(', ')}{surcharge > 0 && <span className="text-amber-700"> (+{formatCents(surcharge)}/unit)</span>}</span>
                   </>
                 )}
               </div>
@@ -460,28 +461,34 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               )}
               {(it.available_customizations?.length ?? 0) > 0 && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">Customization</div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold">
+                    Customizations <span className="text-gray-400 normal-case font-normal">— pick one or more</span>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {it.available_customizations.map((cz) => {
-                      const active = it.customization_id === cz.id
+                      const ids = it.customization_choice_ids || []
+                      const active = ids.includes(cz.id)
                       return (
                         <button
                           key={cz.id}
                           type="button"
                           onClick={() => onUpdate(idx, {
-                            customization_id: cz.id,
-                            customization_name: cz.name,
-                            customization_surcharge_cents: cz.surcharge_cents ?? 0,
+                            customization_choice_ids: active ? ids.filter((x) => x !== cz.id) : [...ids, cz.id],
                           })}
-                          className={`p-2 rounded border-2 text-left ${active ? 'border-blue-500 ring-1 ring-blue-200 bg-white' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                          className={`p-2 rounded border-2 text-left flex items-start gap-2 ${active ? 'border-blue-500 ring-1 ring-blue-200 bg-white' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
                         >
-                          <div className="text-xs font-semibold text-gray-900 flex items-center justify-between gap-1">
-                            <span className="truncate">{cz.name}</span>
-                            {cz.surcharge_cents > 0
-                              ? <span className="text-[10px] text-amber-700">+{formatCents(cz.surcharge_cents)}</span>
-                              : <span className="text-[10px] text-green-700">Free</span>}
+                          <div className={`w-3.5 h-3.5 rounded border-2 mt-0.5 flex-shrink-0 flex items-center justify-center ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}>
+                            {active && <Check size={9} className="text-white" />}
                           </div>
-                          {cz.description && <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{cz.description}</div>}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-gray-900 flex items-center justify-between gap-1">
+                              <span className="truncate">{cz.name}</span>
+                              {cz.surcharge_cents > 0
+                                ? <span className="text-[10px] text-amber-700">+{formatCents(cz.surcharge_cents)}</span>
+                                : <span className="text-[10px] text-green-700">Free</span>}
+                            </div>
+                            {cz.description && <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{cz.description}</div>}
+                          </div>
                         </button>
                       )
                     })}
@@ -801,9 +808,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       colour_choice: prefillItem.colour_choice || null,
       size_breakdown: prefillItem.size_breakdown || null,
       shipping_method: prefillItem.shipping_method || null,
-      customization_id: prefillItem.customization_id || null,
-      customization_name: prefillItem.customization_name || null,
-      customization_surcharge_cents: prefillItem.customization_surcharge_cents ?? null,
+      customization_choice_ids: (prefillItem.customization_choices || []).map((c) => c.id),
       pantone_code: prefillItem.pantone_code || null,
       pantone_selected: !!prefillItem.pantone_selected,
       pantone_match_available: !!item.pantone_match,
@@ -850,7 +855,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     ])
     const colours = csRes.data ?? []
     const customizations = czRes.data ?? []
-    const defaultCust = customizations.find((c) => c.is_default) || customizations[0] || null
+    const defaultCustIds = customizations.filter((c) => c.is_default).map((c) => c.id)
     const sizesParsed = item.size_variants && item.available_sizes
       ? item.available_sizes.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) : []
     setItems((arr) => [
@@ -875,9 +880,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         colour_choice: colours[0]?.colour_name || null,
         size_breakdown: null,
         pantone_code: null,
-        customization_id: defaultCust?.id || null,
-        customization_name: defaultCust?.name || null,
-        customization_surcharge_cents: defaultCust?.surcharge_cents ?? null,
+        customization_choice_ids: defaultCustIds,
       },
     ])
   }
@@ -891,7 +894,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     let hasTBD = false
     for (const it of items) {
       const base = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
-      const surcharge = it.customization_surcharge_cents ?? 0
+      const surcharge = (it.available_customizations || [])
+        .filter((c) => (it.customization_choice_ids || []).includes(c.id))
+        .reduce((s, c) => s + (c.surcharge_cents || 0), 0)
       if (base != null && it.quantity) total += (base + surcharge) * it.quantity
       else hasTBD = true
     }
@@ -943,24 +948,30 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
 
     // Items (trigger handles design_task spawning)
     if (items.length > 0) {
-      const rows = items.map((it) => ({
-        proposal_id: proposal.id,
-        company_id: company.id,
-        catalogue_item_id: it.catalogue_item_id || null,
-        description: it.description,
-        quantity: it.quantity || null,
-        reference_url: it.reference_url,
-        notes: it.notes,
-        colour_choice: it.colour_choice || null,
-        size_choice: it.size_choice || null,
-        shipping_method: it.shipping_method || null,
-        customization_id: it.customization_id || null,
-        customization_name: it.customization_name || null,
-        customization_surcharge_cents: it.customization_surcharge_cents ?? null,
-        size_breakdown: it.size_breakdown || null,
-        pantone_code: it.pantone_code?.trim() || null,
-        requested_by_contact_id: contact.id,
-      }))
+      const rows = items.map((it) => {
+        const choices = (it.available_customizations || [])
+          .filter((c) => (it.customization_choice_ids || []).includes(c.id))
+          .map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0 }))
+        return {
+          proposal_id: proposal.id,
+          company_id: company.id,
+          catalogue_item_id: it.catalogue_item_id || null,
+          description: it.description,
+          quantity: it.quantity || null,
+          reference_url: it.reference_url,
+          notes: it.notes,
+          colour_choice: it.colour_choice || null,
+          size_choice: it.size_choice || null,
+          shipping_method: it.shipping_method || null,
+          customization_choices: choices.length ? choices : null,
+          customization_id: choices[0]?.id || null,
+          customization_name: choices.length ? choices.map((c) => c.name).join(', ') : null,
+          customization_surcharge_cents: choices.length ? choices.reduce((s, c) => s + (c.surcharge_cents || 0), 0) : null,
+          size_breakdown: it.size_breakdown || null,
+          pantone_code: it.pantone_code?.trim() || null,
+          requested_by_contact_id: contact.id,
+        }
+      })
       const { error: itemsErr } = await supabase.from('proposal_requested_items').insert(rows)
       if (itemsErr) { setSubmitting(false); setError(itemsErr.message); return }
     }
