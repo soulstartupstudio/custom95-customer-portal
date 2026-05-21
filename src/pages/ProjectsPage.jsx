@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import {
   FolderKanban, X, Truck, Calendar, FileText, LayoutGrid, List as ListIcon,
   Package, CheckCircle2, Clock, AlertTriangle, MapPin, ExternalLink, Wrench,
-  Palette, ArrowRight, Download, Receipt, CreditCard, Image as ImageIcon,
+  Palette, ArrowRight, Download, Receipt, CreditCard, Image as ImageIcon, Warehouse,
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatCents, formatDate, Table, Badge, SecondaryButton, SectionBlock } from '../components/ui'
 import DesignDrawer from '../components/DesignDrawer'
@@ -34,6 +34,12 @@ const PAYMENT_STATUS_LABEL = {
 }
 const PAYMENT_STATUS_TONE = {
   unpaid: 'yellow', partial: 'blue', paid: 'green', overdue: 'red', gift: 'purple',
+}
+const FULFILMENT_LABEL = {
+  direct: 'Direct to your address',
+  multi_address: 'Multiple addresses',
+  warehouse: 'Custom95 warehouse',
+  brandshop: 'Brandshop fulfilment',
 }
 
 function ProjectCard({ project, onClick, compact = false }) {
@@ -446,19 +452,39 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-gray-400">Fulfilment</div>
-                  <div className="text-gray-900">{project.fulfilment_service?.replace(/_/g, ' ') || '—'}</div>
+                  <div className="text-gray-900">{FULFILMENT_LABEL[project.fulfilment_service] || project.fulfilment_service?.replace(/_/g, ' ') || '—'}</div>
                 </div>
               </div>
-              {(deliveryAddress || billingAddress) && (
+
+              {/* Address cards — warehouse case gets a synthetic Custom95 destination */}
+              {project.fulfilment_service === 'warehouse' || project.warehousing_needed ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="border border-blue-200 bg-blue-50 rounded-lg p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-blue-700 mb-1 flex items-center gap-1">
+                      <Warehouse size={11} />Delivery destination
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900">Custom95 Warehouse</div>
+                    <div className="text-xs text-gray-600 mt-0.5">Stock held with us — request shipments from the Warehouse tab.</div>
+                  </div>
+                  {billingAddress && <AddressCard address={billingAddress} label="Billing address" />}
+                </div>
+              ) : (deliveryAddress || billingAddress) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <AddressCard address={deliveryAddress} label="Delivery address" />
                   {billingAddress && billingAddress.id !== deliveryAddress?.id && (
                     <AddressCard address={billingAddress} label="Billing address" />
                   )}
                 </div>
-              )}
-              {!deliveryAddress && !billingAddress && (
+              ) : (
                 <div className="text-xs text-gray-400">No addresses on file for this project.</div>
+              )}
+
+              {/* Delivery notes from the proposal wizard */}
+              {project.delivery_notes && (
+                <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Delivery notes</div>
+                  <div className="text-sm text-gray-800 whitespace-pre-wrap">{project.delivery_notes}</div>
+                </div>
               )}
             </div>
           </SectionBlock>
