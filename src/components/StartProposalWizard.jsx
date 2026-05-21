@@ -6,6 +6,7 @@ import {
   MapPin, Users, Mail, Phone,
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
+import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
 
 const STEPS = [
   { id: 'basics', label: 'Basics' },
@@ -778,12 +779,13 @@ function TeamPicker({ company, contact, selectedIds, onChange }) {
 }
 
 // --- MAIN WIZARD ---
-export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem }) {
-  const [step, setStep] = useState(prefillItem ? 0 : 0)
+export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem, resumeDraft }) {
+  const [step, setStep] = useState(resumeDraft?.step ?? 0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [itemMode, setItemMode] = useState('catalogue')
   const [items, setItems] = useState(() => {
+    if (resumeDraft?.items) return resumeDraft.items
     if (!prefillItem) return []
     const item = prefillItem.catalogue_item
     return [{
@@ -811,9 +813,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       available_customizations: prefillItem.available_customizations || [],
     }]
   })
-  const [addressIds, setAddressIds] = useState([])
-  const [teamIds, setTeamIds] = useState(contact?.id ? [contact.id] : [])
-  const [form, setForm] = useState({
+  const [addressIds, setAddressIds] = useState(resumeDraft?.addressIds ?? [])
+  const [teamIds, setTeamIds] = useState(resumeDraft?.teamIds ?? (contact?.id ? [contact.id] : []))
+  const [form, setForm] = useState(resumeDraft?.form ?? {
     name: prefillItem?.catalogue_item ? `${prefillItem.catalogue_item.name} project` : '',
     occasion: '',
     occasion_other: '',
@@ -822,6 +824,18 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     shipment_type: 'one_address',
     delivery_notes: '',
   })
+
+  // Persist to localStorage on every meaningful change so the floating
+  // "Proposal in progress" widget can resume from where the customer left off.
+  const submittingRef = useRef(false)
+  submittingRef.current = submitting
+  useEffect(() => {
+    if (!company?.id || submittingRef.current) return
+    const snapshot = { step, form, items, addressIds, teamIds }
+    if (isDraftMeaningful(snapshot)) {
+      saveProposalDraft(company.id, snapshot)
+    }
+  }, [company?.id, step, form, items, addressIds, teamIds])
 
   const update = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -964,6 +978,8 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       if (pcErr) { setSubmitting(false); setError(pcErr.message); return }
     }
 
+    // Submitted — wipe the in-progress draft
+    clearProposalDraft(company.id)
     setSubmitting(false)
     onCreated?.()
     onClose()

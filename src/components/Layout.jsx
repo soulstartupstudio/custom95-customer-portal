@@ -17,6 +17,8 @@ import BrandshopPage from '../pages/BrandshopPage'
 import BrandPage from '../pages/BrandPage'
 import StartProposalWizard from './StartProposalWizard'
 import WhatsAppButton from './WhatsAppButton'
+import ProposalDraftWidget from './ProposalDraftWidget'
+import { readProposalDraft, clearProposalDraft } from '../lib/proposalDraft'
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,8 +38,22 @@ export default function Layout({ session, contact, company }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
+  const [wizardResume, setWizardResume] = useState(null)   // draft snapshot to resume from
+  const [draft, setDraft] = useState(null)                 // in-progress proposal draft
   const [refreshKey, setRefreshKey] = useState(0)
   const [deepLink, setDeepLink] = useState(null) // { tab, id, review }
+
+  // Read any saved draft on mount / when company changes
+  useEffect(() => {
+    if (!company?.id) return
+    setDraft(readProposalDraft(company.id))
+  }, [company?.id])
+
+  // Poll while wizard is open: when it saves, we want to refresh the widget when it closes
+  useEffect(() => {
+    if (wizardOpen || !company?.id) return
+    setDraft(readProposalDraft(company.id))
+  }, [wizardOpen, company?.id, refreshKey])
 
   // Read deep-link params from URL on first load: ?tab=projects&id=<uuid>&review=<token>
   useEffect(() => {
@@ -62,8 +78,10 @@ export default function Layout({ session, contact, company }) {
 
   const visibleTabs = tabs.filter((t) => !t.requiresBrandshop || company?.brandshop_addon)
 
-  const openWizard = () => { setWizardPrefill(null); setWizardOpen(true) }
-  const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardOpen(true) }
+  const openWizard = () => { setWizardPrefill(null); setWizardResume(null); setWizardOpen(true) }
+  const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardResume(null); setWizardOpen(true) }
+  const resumeWizardFromDraft = () => { setWizardPrefill(null); setWizardResume(draft); setWizardOpen(true) }
+  const discardDraft = () => { clearProposalDraft(company?.id); setDraft(null) }
 
   const navigateTo = (tab, id) => {
     setDeepLink(id ? { tab, id } : null)
@@ -153,16 +171,35 @@ export default function Layout({ session, contact, company }) {
 
       <WhatsAppButton url={company?.whatsapp_group_url} />
 
+      {/* In-progress proposal pill (hidden while the wizard itself is open) */}
+      {!wizardOpen && draft && (
+        <ProposalDraftWidget
+          draft={draft}
+          company={company}
+          onResume={resumeWizardFromDraft}
+          onDiscard={discardDraft}
+        />
+      )}
+
       {wizardOpen && (
         <StartProposalWizard
           company={company}
           contact={contact}
           prefillItem={wizardPrefill}
-          onClose={() => { setWizardOpen(false); setWizardPrefill(null) }}
+          resumeDraft={wizardResume}
+          onClose={() => {
+            setWizardOpen(false)
+            setWizardPrefill(null)
+            setWizardResume(null)
+            // The wizard saves on every change, so re-read whatever it left behind
+            if (company?.id) setDraft(readProposalDraft(company.id))
+          }}
           onCreated={() => {
             setRefreshKey((k) => k + 1)
             setActiveTab('proposals')
             setWizardPrefill(null)
+            setWizardResume(null)
+            setDraft(null)
           }}
         />
       )}
