@@ -133,24 +133,39 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   }, [qty, sizeBreakdown, item.pantone_match_moq, pantoneSelected])
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', item.id).order('qty_from'),
-      supabase.from('catalogue_colour_options').select('*').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
-      supabase.from('catalogue_photos').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
-      supabase.from('catalogue_customizations').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
-    ]).then(([t, c, p, cz]) => {
-      // hide sample tier rows from customer
-      setTiers((t.data ?? []).filter((row) => !row.is_sample_tier))
+    (async () => {
+      // Load the company_catalogue link for this item so we can look up
+      // company-specific pricing tiers (they win over the global ones).
+      const { data: ccLink } = await supabase
+        .from('company_catalogue')
+        .select('id')
+        .eq('company_id', company.id)
+        .eq('catalogue_item_id', item.id)
+        .maybeSingle()
+
+      const [t, c, p, cz, ccpt] = await Promise.all([
+        supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', item.id).order('qty_from'),
+        supabase.from('catalogue_colour_options').select('*').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
+        supabase.from('catalogue_photos').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
+        supabase.from('catalogue_customizations').select('*').eq('catalogue_item_id', item.id).order('sort_order'),
+        ccLink?.id
+          ? supabase.from('company_catalogue_pricing_tiers').select('*').eq('company_catalogue_id', ccLink.id).order('qty_from')
+          : Promise.resolve({ data: [] }),
+      ])
+
+      // Company-specific tiers win wholesale when present, else fall back to
+      // the global (non-sample) tiers.
+      const customTiers = ccpt?.data ?? []
+      const globalTiers = (t.data ?? []).filter((row) => !row.is_sample_tier)
+      setTiers(customTiers.length > 0 ? customTiers : globalTiers)
       setColours(c.data ?? [])
       setPhotos(p.data ?? [])
       setCustomizations(cz.data ?? [])
-      // pre-select first colour if any
       if ((c.data ?? []).length > 0) setColour((c.data ?? [])[0])
-      // pre-select default customizations (multi). If none flagged default, leave empty.
       const defaults = (cz.data ?? []).filter((x) => x.is_default).map((x) => x.id)
       setSelectedCustomizationIds(defaults)
-    })
-  }, [item.id])
+    })()
+  }, [item.id, company.id])
 
   // Photo gallery: main_photo_url + catalogue_photos
   const allPhotos = useMemo(() => {

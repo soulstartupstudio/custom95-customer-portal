@@ -73,16 +73,25 @@ function CataloguePicker({ mode, company, onPick }) {
 
       const ids = source.map((s) => s.id)
       if (ids.length) {
-        const { data: tiers } = await supabase
-          .from('catalogue_pricing_tiers')
-          .select('*')
-          .in('catalogue_item_id', ids)
-          .order('qty_from')
+        // Pull both global tiers AND company-specific tier overrides; the
+        // overrides win wholesale (per-item) when they exist.
+        const [globalRes, ccRes] = await Promise.all([
+          supabase.from('catalogue_pricing_tiers').select('*').in('catalogue_item_id', ids).order('qty_from'),
+          supabase.from('company_catalogue').select('id, catalogue_item_id, company_catalogue_pricing_tiers(*)')
+            .eq('company_id', company.id).in('catalogue_item_id', ids),
+        ])
         if (!cancelled) {
           const byItem = {}
-          for (const t of tiers ?? []) {
+          // Start with global (filter out sample tiers)
+          for (const t of globalRes.data ?? []) {
+            if (t.is_sample_tier) continue
             byItem[t.catalogue_item_id] = byItem[t.catalogue_item_id] || []
             byItem[t.catalogue_item_id].push(t)
+          }
+          // Replace per-item if there are company tiers
+          for (const row of ccRes.data ?? []) {
+            const customTiers = row.company_catalogue_pricing_tiers || []
+            if (customTiers.length > 0) byItem[row.catalogue_item_id] = customTiers.sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
           }
           setTiersByItem(byItem)
         }
