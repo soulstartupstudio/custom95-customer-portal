@@ -24,7 +24,13 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
 
   const save = async () => {
     if (!form.street.trim() || !form.city.trim()) { setError('Street and city are required.'); return }
-    if (mode === 'shipment' && !form.contact_name.trim()) { setError('Contact name is required for shipments.'); return }
+    if (mode === 'shipment') {
+      // Shipments always need name + phone + email so the carrier can reach the
+      // recipient and we can send tracking. This matches the team-app gate.
+      if (!form.contact_name.trim()) { setError('Recipient name is required for shipments.'); return }
+      if (!form.contact_phone.trim()) { setError('Recipient phone is required for shipments.'); return }
+      if (!form.contact_email.trim()) { setError('Recipient email is required for shipments.'); return }
+    }
     setBusy(true); setError(null)
     const payload = {
       company_id: company.id,
@@ -83,9 +89,12 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
         <div className="text-xs font-semibold text-gray-700">Recipient / contact on site</div>
         <input type="text" value={form.contact_name || ''} onChange={(e) => update('contact_name', e.target.value)} placeholder={mode === 'shipment' ? 'Contact name *' : 'Contact name'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
         <div className="grid grid-cols-2 gap-2">
-          <input type="tel" value={form.contact_phone || ''} onChange={(e) => update('contact_phone', e.target.value)} placeholder="Phone" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-          <input type="email" value={form.contact_email || ''} onChange={(e) => update('contact_email', e.target.value)} placeholder="Email" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          <input type="tel" value={form.contact_phone || ''} onChange={(e) => update('contact_phone', e.target.value)} placeholder={mode === 'shipment' ? 'Phone *' : 'Phone'} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          <input type="email" value={form.contact_email || ''} onChange={(e) => update('contact_email', e.target.value)} placeholder={mode === 'shipment' ? 'Email *' : 'Email'} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
         </div>
+        {mode === 'shipment' && (
+          <p className="text-[10px] text-gray-500">Name, phone, and email are all required so the carrier can call and we can email the tracking link.</p>
+        )}
       </div>
 
       {mode === 'full' && (

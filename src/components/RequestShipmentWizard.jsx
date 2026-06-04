@@ -159,7 +159,8 @@ function AddressPicker({ company, selectedIds, onChange }) {
             }
             const active = selectedIds.includes(a.id)
             const hasContactName = !!a.contact_name?.trim()
-            const hasFullContact = hasContactName && (a.contact_phone || a.contact_email)
+            // Shipments need all three so the carrier can call AND email the recipient.
+            const hasFullContact = hasContactName && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
             return (
               <div
                 key={a.id}
@@ -178,7 +179,7 @@ function AddressPicker({ company, selectedIds, onChange }) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="text-sm font-medium text-gray-900 truncate">{a.label || `${a.street} ${a.house_number || ''}`}</div>
                       {a.is_default_delivery && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Default</span>}
-                      {!hasContactName && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1"><AlertCircle size={10} />Needs recipient</span>}
+                      {!hasFullContact && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1"><AlertCircle size={10} />Needs name, phone &amp; email</span>}
                     </div>
                     <div className="text-xs text-gray-500">
                       {[a.street, a.house_number].filter(Boolean).join(' ')}{a.postal_code || a.city ? ', ' : ''}{[a.postal_code, a.city].filter(Boolean).join(' ')}{a.country ? `, ${a.country}` : ''}
@@ -283,8 +284,11 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     if (step === 0) return items.length > 0
     if (step === 1) {
       if (addressIds.length === 0) return false
-      // require contact_name on each selected address
-      return addresses.length === addressIds.length && addresses.every((a) => a.contact_name?.trim())
+      // Every selected destination needs name + phone + email so the carrier
+      // can call AND email the recipient when the parcel is on the way.
+      return addresses.length === addressIds.length && addresses.every((a) =>
+        !!a.contact_name?.trim() && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
+      )
     }
     if (step === 2) return shipAsap || !!shipDate
     return true
