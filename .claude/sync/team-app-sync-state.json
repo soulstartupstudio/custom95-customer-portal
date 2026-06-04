@@ -1,0 +1,6 @@
+{
+  "_doc": "Tracks the last point at which we audited the team-app repo for changes that could affect the customer-portal. Updated automatically by the sync workflow.",
+  "last_team_app_sha": "c18549d",
+  "last_audit_at": "2026-06-04T00:00:00Z",
+  "notes": "Initial baseline. Next audit should diff team-app HEAD against this SHA."
+}
