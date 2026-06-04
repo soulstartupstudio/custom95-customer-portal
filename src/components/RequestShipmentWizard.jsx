@@ -3,21 +3,20 @@ import { supabase } from '../lib/supabase'
 import {
   X, ChevronLeft, ChevronRight, Check, Package, MapPin, Plus, Truck,
   Calendar as CalendarIcon, Zap, Search, Trash2, AlertCircle, Mail, Phone, User, Pencil,
+  Leaf, Wallet, Clock,
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatDate } from './ui'
 import AddressEditor from './AddressEditor'
+import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE } from '../lib/shippingCalc'
 
 const STEPS = [
   { id: 'items', label: 'Items' },
   { id: 'addresses', label: 'Addresses' },
-  { id: 'shipping', label: 'Shipping' },
+  { id: 'shipping', label: 'Shipping & price' },
   { id: 'review', label: 'Review' },
 ]
 
-const SPEED_OPTIONS = [
-  { value: 'standard', label: 'Standard', hint: 'Best price, usual lead time' },
-  { value: 'express', label: 'Express', hint: 'Faster transit, higher cost' },
-]
+const formatEur = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
 
 // --- Item picker ---
 function ItemPicker({ company, onAdd, selectedByInventoryId }) {
@@ -31,7 +30,7 @@ function ItemPicker({ company, onAdd, selectedByInventoryId }) {
       setLoading(true)
       const { data } = await supabase
         .from('warehouse_inventory_client')
-        .select('id, product_name, sku, variant, product_photo_url, available_qty, on_hand_qty, warehouse_location')
+        .select('id, product_name, sku, variant, product_photo_url, available_qty, on_hand_qty, warehouse_location, unit_weight_grams, unit_volume_ml')
         .eq('company_id', company.id)
         .eq('portal_orderable', true)
         .gt('available_qty', 0)
@@ -240,8 +239,14 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const [addresses, setAddresses] = useState([])
   const [shipAsap, setShipAsap] = useState(true)
   const [shipDate, setShipDate] = useState('')
-  const [speed, setSpeed] = useState('standard')
   const [notes, setNotes] = useState('')
+  // Per-inventory-item dim overrides for items missing stored weight/volume.
+  // { [inventory_id]: { weightG, volumeMl } } — strings as typed.
+  const [dimsOverride, setDimsOverride] = useState({})
+  // Customer's chosen shipping option per address: { [address_id]: option_id }
+  const [chosenOptionByAddress, setChosenOptionByAddress] = useState({})
+  // Show prices incl. VAT to the customer by default (most relevant for them)
+  const [vatInclusive, setVatInclusive] = useState(true)
 
   useEffect(() => {
     if (addressIds.length === 0) { setAddresses([]); return }
@@ -271,6 +276,8 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         product_photo_url: invItem.product_photo_url,
         sku: invItem.sku,
         variant: invItem.variant,
+        unit_weight_grams: invItem.unit_weight_grams,
+        unit_volume_ml: invItem.unit_volume_ml,
       }]
     })
   }
@@ -290,16 +297,90 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         !!a.contact_name?.trim() && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
       )
     }
-    if (step === 2) return shipAsap || !!shipDate
+    if (step === 2) return allAddressesPriced && unknownDimsCount === 0 && (shipAsap || !!shipDate)
     return true
   }
 
   const totalUnitsRequested = items.reduce((s, i) => s + i.qty, 0) * Math.max(1, addressIds.length)
 
+  // ── Shipping calculator wiring ────────────────────────────────────────────
+  // Resolve per-item weight/volume in priority order: manual override → stored
+  // value → estimate from product name.
+  const calcItems = useMemo(() => {
+    return items.map((it) => {
+      const ov = dimsOverride[it.inventory_id] || {}
+      const ovG = ov.weightG !== '' && ov.weightG != null && Number.isFinite(parseFloat(ov.weightG)) ? parseFloat(ov.weightG) : null
+      const ovMl = ov.volumeMl !== '' && ov.volumeMl != null && Number.isFinite(parseFloat(ov.volumeMl)) ? parseFloat(ov.volumeMl) : null
+      const guess = guessProductDims(it.product_name)
+      let grams, source
+      if (ovG != null) { grams = ovG; source = 'override' }
+      else if (it.unit_weight_grams != null) { grams = it.unit_weight_grams; source = 'stored' }
+      else if (guess) { grams = guess.grams; source = 'estimated' }
+      else { grams = null; source = 'unknown' }
+      let ml
+      if (ovMl != null) ml = ovMl
+      else if (it.unit_volume_ml != null) ml = it.unit_volume_ml
+      else if (guess) ml = guess.ml
+      else ml = null
+      return { ...it, grams, ml, source, guessLabel: guess?.label || null }
+    })
+  }, [items, dimsOverride])
+
+  const unknownDimsCount = calcItems.filter((x) => x.grams == null).length
+
+  // Per-address calculator result + default chosen option
+  const perAddress = useMemo(() => {
+    return addresses.map((addr) => {
+      const country = normalizeCountry(addr.country)
+      const calcInput = calcItems
+        .filter((x) => x.grams != null)
+        .map((x) => ({ weightKg: x.grams / 1000, volumeL: (x.ml ?? 500) / 1000, quantity: x.qty }))
+      const result = calcShipment({ items: calcInput, country })
+      return { addr, country, ...result }
+    })
+  }, [addresses, calcItems])
+
+  // Auto-pick the cheapest option for each address when the picker first loads.
+  useEffect(() => {
+    setChosenOptionByAddress((prev) => {
+      const next = { ...prev }
+      let dirty = false
+      for (const p of perAddress) {
+        if (p.options.length > 0 && !next[p.addr.id]) {
+          const cheapest = [...p.options].sort((a, b) => a.total - b.total)[0]
+          next[p.addr.id] = cheapest.id
+          dirty = true
+        }
+      }
+      return dirty ? next : prev
+    })
+  }, [perAddress.map((p) => p.addr.id + ':' + p.options.length).join('|')])
+
+  // Total across addresses based on picked options (excl + incl VAT)
+  const grandTotalCents = useMemo(() => {
+    let exVat = 0
+    for (const p of perAddress) {
+      const optId = chosenOptionByAddress[p.addr.id]
+      const opt = p.options.find((o) => o.id === optId)
+      if (opt) exVat += Math.round(opt.total * 100)
+    }
+    return { exVat, inclVat: Math.round(exVat * (1 + VAT_RATE)) }
+  }, [perAddress, chosenOptionByAddress])
+
+  const allAddressesPriced = perAddress.length > 0 && perAddress.every((p) => {
+    const optId = chosenOptionByAddress[p.addr.id]
+    return p.options.length > 0 && optId && p.options.find((o) => o.id === optId)
+  })
+
   const submit = async () => {
     setSubmitting(true); setError(null)
+    const quotedAt = new Date().toISOString()
     const requests = []
-    for (const addr of addresses) {
+    for (const p of perAddress) {
+      const addr = p.addr
+      const optId = chosenOptionByAddress[addr.id]
+      const opt = p.options.find((o) => o.id === optId)
+      const priceCents = opt ? Math.round((vatInclusive ? opt.totalInclVat : opt.total) * 100) : null
       const { data: req, error: err } = await supabase.from('warehouse_requests').insert({
         company_id: company.id,
         requested_by_contact_id: contact.id,
@@ -315,8 +396,18 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         ship_to_contact_email: addr.contact_email,
         requested_date: shipAsap ? null : shipDate || null,
         ship_asap: shipAsap,
-        shipping_speed: speed,
+        shipping_speed: opt?.id || null,
         notes: notes.trim() || null,
+        // Locked-in shipping quote from the calculator
+        quoted_price_cents: priceCents,
+        quoted_price_includes_vat: !!vatInclusive,
+        quoted_carrier_name: opt?.carrier || null,
+        quoted_service_id: opt?.id || null,
+        quoted_service_label: opt?.sub || null,
+        quoted_speed: opt?.speed || null,
+        quoted_box_count: opt?.boxes || null,
+        quoted_total_weight_kg: p.totalWeightKg || null,
+        quoted_at: opt ? quotedAt : null,
       }).select('id').single()
       if (err) { setSubmitting(false); setError(err.message); return }
       requests.push(req.id)
@@ -325,6 +416,22 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
       const { error: itemsErr } = await supabase.from('warehouse_request_items').insert(rows)
       if (itemsErr) { setSubmitting(false); setError(itemsErr.message); return }
     }
+
+    // Persist resolved weight/volume back to the inventory rows so future
+    // shipments auto-calculate (best-effort, never blocks).
+    const persisted = new Set()
+    for (const ci of calcItems) {
+      if (persisted.has(ci.inventory_id)) continue
+      if (ci.source !== 'override' && ci.source !== 'estimated') continue
+      const patch = {}
+      if (ci.grams != null) patch.unit_weight_grams = Math.round(ci.grams)
+      if (ci.ml != null) patch.unit_volume_ml = Math.round(ci.ml)
+      if (Object.keys(patch).length) {
+        persisted.add(ci.inventory_id)
+        try { await supabase.from('warehouse_inventory').update(patch).eq('id', ci.inventory_id) } catch { /* non-fatal */ }
+      }
+    }
+
     setSubmitting(false)
     onCreated?.(requests)
     onClose()
@@ -433,6 +540,120 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
 
           {step === 2 && (
             <div className="space-y-5">
+              {/* Unknown weights gate */}
+              {unknownDimsCount > 0 && (
+                <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <AlertCircle size={14} />
+                    <div className="text-sm font-semibold">We need a weight for {unknownDimsCount} item{unknownDimsCount === 1 ? '' : 's'}</div>
+                  </div>
+                  <p className="text-xs text-amber-800">Without it we can't calculate an accurate shipping price. Just type an approximate weight in grams — we'll remember it next time.</p>
+                  <div className="space-y-2">
+                    {calcItems.filter((x) => x.grams == null).map((it) => (
+                      <div key={it.inventory_id} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg p-2">
+                        <div className="text-xs flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{it.product_name}{it.variant ? ` · ${it.variant}` : ''}</div>
+                          <div className="text-[10px] text-gray-500">× {it.qty}</div>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="g per unit"
+                          value={dimsOverride[it.inventory_id]?.weightG ?? ''}
+                          onChange={(e) => setDimsOverride((prev) => ({
+                            ...prev,
+                            [it.inventory_id]: { ...(prev[it.inventory_id] || {}), weightG: e.target.value },
+                          }))}
+                          className="w-24 px-2 py-1.5 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Calculator results per address */}
+              {unknownDimsCount === 0 && perAddress.map((p) => (
+                <div key={p.addr.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                        <MapPin size={13} className="text-gray-400" />{p.addr.label || `${p.addr.street} ${p.addr.house_number || ''}`}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        {[p.addr.city, p.country || p.addr.country].filter(Boolean).join(' · ')} · {p.boxes || 0} box{p.boxes === 1 ? '' : 'es'} · {p.totalWeightKg?.toFixed(1) || 0} kg
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {p.options.length === 0 ? (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 inline-flex items-center gap-1.5">
+                        <AlertCircle size={12} />No carrier available for <strong>{p.country || p.addr.country || 'this country'}</strong>. Pick a different destination or contact your account manager.
+                      </div>
+                    ) : (
+                      p.options.map((opt) => {
+                        const active = chosenOptionByAddress[p.addr.id] === opt.id
+                        const Icon = opt.id === 'express' ? Zap : opt.id === 'hive' ? Leaf : Truck
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setChosenOptionByAddress((prev) => ({ ...prev, [p.addr.id]: opt.id }))}
+                            className={`w-full text-left p-3 border-2 rounded-lg transition-colors ${active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <Icon size={16} className={active ? 'text-blue-600' : 'text-gray-400'} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-900">{opt.carrier}</span>
+                                  {opt.tag === 'cheapest' && <span className="text-[10px] uppercase font-bold tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Cheapest</span>}
+                                  {opt.tag === 'fastest' && <span className="text-[10px] uppercase font-bold tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Fastest</span>}
+                                </div>
+                                <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                                  <span className="inline-flex items-center gap-1"><Clock size={10} />{opt.speed}</span>
+                                  <span>·</span>
+                                  <span>{opt.boxes} box{opt.boxes === 1 ? '' : 'es'}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-0.5">{opt.sub}</div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <div className="text-sm font-bold text-gray-900">
+                                  {formatEur(Math.round((vatInclusive ? opt.totalInclVat : opt.total) * 100))}
+                                </div>
+                                <div className="text-[10px] text-gray-500">{vatInclusive ? 'incl. VAT' : 'excl. VAT'}</div>
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Grand total + VAT toggle */}
+              {allAddressesPriced && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide">Total shipping cost</div>
+                      <div className="text-[11px] text-blue-700/80 mt-0.5">{addresses.length} address{addresses.length === 1 ? '' : 'es'} · {totalUnitsRequested} units</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-blue-900">{formatEur(vatInclusive ? grandTotalCents.inclVat : grandTotalCents.exVat)}</div>
+                      <button
+                        type="button"
+                        onClick={() => setVatInclusive((v) => !v)}
+                        className="text-[10px] text-blue-700 hover:text-blue-900 underline mt-0.5"
+                      >
+                        {vatInclusive ? 'incl. VAT — switch to excl.' : 'excl. VAT — switch to incl.'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Date picker */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
                   <CalendarIcon size={14} />When should we ship out?
@@ -441,9 +662,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                   <button
                     type="button"
                     onClick={() => { setShipAsap(true); setShipDate('') }}
-                    className={`w-full px-4 py-3 border rounded-lg text-left transition-colors ${
-                      shipAsap ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    className={`w-full px-4 py-3 border rounded-lg text-left transition-colors ${shipAsap ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
                   >
                     <div className="flex items-center gap-2">
                       <Zap size={14} className="text-blue-600" />
@@ -453,12 +672,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                   </button>
                   <div className={`w-full px-4 py-3 border rounded-lg transition-colors ${!shipAsap ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={!shipAsap}
-                        onChange={() => setShipAsap(false)}
-                        className="accent-blue-600"
-                      />
+                      <input type="radio" checked={!shipAsap} onChange={() => setShipAsap(false)} className="accent-blue-600" />
                       <span className="text-sm font-medium text-gray-900">Specific ship-out date</span>
                     </label>
                     <div className="text-xs text-gray-500 mb-2">Day we'll send the package out (not the delivery date).</div>
@@ -474,25 +688,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Shipping speed</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {SPEED_OPTIONS.map((s) => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      onClick={() => setSpeed(s.value)}
-                      className={`px-4 py-3 border rounded-lg text-left transition-colors ${
-                        speed === s.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{s.label}</div>
-                      <div className="text-xs text-gray-500">{s.hint}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              {/* Notes */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes <span className="text-xs font-normal text-gray-400">(optional)</span></label>
                 <textarea
@@ -538,21 +734,39 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-gray-200 grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <div className="text-gray-500">Ship out</div>
-                    <div className="text-gray-900 font-medium">{shipAsap ? 'ASAP' : formatDate(shipDate) || '—'}</div>
+                <div className="pt-3 border-t border-gray-200 space-y-2 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-gray-500">Ship out</div>
+                      <div className="text-gray-900 font-medium">{shipAsap ? 'ASAP' : formatDate(shipDate) || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Total units reserved</div>
+                      <div className="text-gray-900 font-medium">{totalUnitsRequested}</div>
+                    </div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Speed</div>
-                    <div className="text-gray-900 font-medium capitalize">{speed}</div>
+                    <div className="text-gray-500 mb-1">Carrier per address</div>
+                    <div className="space-y-1">
+                      {perAddress.map((p) => {
+                        const opt = p.options.find((o) => o.id === chosenOptionByAddress[p.addr.id])
+                        return (
+                          <div key={p.addr.id} className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="text-gray-700 truncate">{p.addr.label || `${p.addr.city || p.addr.country}`}</span>
+                            <span className="font-medium text-gray-900">
+                              {opt ? `${opt.carrier} · ${opt.speed} · ${formatEur(Math.round((vatInclusive ? opt.totalInclVat : opt.total) * 100))}` : '—'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <div className="text-gray-500">Total units reserved</div>
-                    <div className="text-gray-900 font-medium">{totalUnitsRequested}</div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <div className="text-sm font-semibold text-gray-900">Total shipping ({vatInclusive ? 'incl. VAT' : 'excl. VAT'})</div>
+                    <div className="text-sm font-bold text-blue-700">{formatEur(vatInclusive ? grandTotalCents.inclVat : grandTotalCents.exVat)}</div>
                   </div>
                   {notes && (
-                    <div className="col-span-2">
+                    <div>
                       <div className="text-gray-500">Notes</div>
                       <div className="text-gray-900 whitespace-pre-wrap">{notes}</div>
                     </div>

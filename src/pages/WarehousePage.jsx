@@ -4,7 +4,7 @@ import {
   Package, TruckIcon, X, AlertTriangle, Activity, Plus, MapPin, Zap, Clock,
   ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight,
 } from 'lucide-react'
-import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
+import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
 
 const LOW_STOCK_THRESHOLD = 10
@@ -511,11 +511,12 @@ export default function WarehousePage({ company, contact }) {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {[
           { id: 'inventory', label: `Inventory (${inventory.length})` },
           { id: 'requests', label: `My requests${pendingRequests > 0 ? ` · ${pendingRequests}` : ''} (${requests.length})` },
           { id: 'orders', label: `Shipments (${orders.length})` },
+          { id: 'spend', label: 'Shipping costs' },
           { id: 'movements', label: `Movements (${movements.length})` },
         ].map((t) => (
           <button
@@ -631,6 +632,8 @@ export default function WarehousePage({ company, contact }) {
         </>
       )}
 
+      {tab === 'spend' && <SpendTab requests={requests} />}
+
       {tab === 'movements' && (
         <>
           <FiltersBar
@@ -732,6 +735,125 @@ export default function WarehousePage({ company, contact }) {
 }
 
 // --- Request detail drawer (full view) ---
+// --- Shipping-cost history ---
+function SpendTab({ requests }) {
+  // Only requests that carry a quoted price (i.e. went through the calculator)
+  const priced = (requests || []).filter((r) => r.quoted_price_cents != null && r.created_at)
+
+  const now = new Date()
+  const startOfThisYear = new Date(now.getFullYear(), 0, 1)
+  const startOfLast30 = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const inWindow = (r, from, to) => {
+    const d = new Date(r.created_at)
+    return d >= from && (!to || d < to)
+  }
+  const sum = (rows) => rows.reduce((s, r) => s + (r.quoted_price_cents || 0), 0)
+
+  const thisYear = priced.filter((r) => inWindow(r, startOfThisYear))
+  const last30 = priced.filter((r) => inWindow(r, startOfLast30))
+  const thisMonth = priced.filter((r) => inWindow(r, startOfThisMonth))
+
+  // Group by year-month
+  const byMonth = {}
+  for (const r of priced) {
+    const d = new Date(r.created_at)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    if (!byMonth[key]) byMonth[key] = []
+    byMonth[key].push(r)
+  }
+  const months = Object.keys(byMonth).sort().reverse()
+  const monthMax = Math.max(1, ...months.map((m) => sum(byMonth[m])))
+
+  if (priced.length === 0) {
+    return (
+      <EmptyState
+        icon={TruckIcon}
+        title="No priced shipments yet"
+        description="Once you request a shipment with the live price calculator, the cost history will appear here."
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Top stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatTile label="This month" value={formatCents(sum(thisMonth))} sub={`${thisMonth.length} shipment${thisMonth.length === 1 ? '' : 's'}`} tone="blue" />
+        <StatTile label="Last 30 days" value={formatCents(sum(last30))} sub={`${last30.length} shipment${last30.length === 1 ? '' : 's'}`} tone="indigo" />
+        <StatTile label={`Year-to-date · ${now.getFullYear()}`} value={formatCents(sum(thisYear))} sub={`${thisYear.length} shipment${thisYear.length === 1 ? '' : 's'} · avg ${formatCents(thisYear.length ? sum(thisYear) / thisYear.length : 0)}`} tone="green" />
+      </div>
+
+      {/* Monthly bar list */}
+      <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+        <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700 uppercase tracking-wide">Spend by month</div>
+        <div className="divide-y divide-gray-100">
+          {months.map((m) => {
+            const total = sum(byMonth[m])
+            const pct = Math.max(2, Math.round((total / monthMax) * 100))
+            const [y, mm] = m.split('-')
+            const label = new Date(Number(y), Number(mm) - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+            return (
+              <div key={m} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                <div className="w-20 text-xs font-medium text-gray-600">{label}</div>
+                <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full bg-blue-500" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="w-28 text-right text-xs">
+                  <div className="font-semibold text-gray-900">{formatCents(total)}</div>
+                  <div className="text-[10px] text-gray-500">{byMonth[m].length} shipment{byMonth[m].length === 1 ? '' : 's'}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Full priced-request list */}
+      <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+        <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700 uppercase tracking-wide">All priced shipments</div>
+        <div className="divide-y divide-gray-100">
+          {priced.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((r) => (
+            <div key={r.id} className="px-4 py-3 flex items-start gap-3 text-sm">
+              <div className="text-xs text-gray-400 w-20 flex-shrink-0">{formatDate(r.created_at)}</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 truncate">{r.ship_to_name || r.ship_to_city || 'Shipment'}</div>
+                <div className="text-[11px] text-gray-500 truncate">
+                  {[r.ship_to_city, r.ship_to_country].filter(Boolean).join(' · ')}
+                  {r.quoted_carrier_name && <> · {r.quoted_carrier_name}</>}
+                  {r.quoted_speed && <> · {r.quoted_speed}</>}
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-sm font-semibold text-gray-900">{formatCents(r.quoted_price_cents)}</div>
+                <div className="text-[10px] text-gray-500">{r.quoted_price_includes_vat ? 'incl. VAT' : 'excl. VAT'}</div>
+              </div>
+              <StatusBadge status={r.status} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StatTile({ label, value, sub, tone = 'gray' }) {
+  const tones = {
+    blue: 'border-blue-200 bg-blue-50 text-blue-900',
+    indigo: 'border-indigo-200 bg-indigo-50 text-indigo-900',
+    green: 'border-green-200 bg-green-50 text-green-900',
+    gray: 'border-gray-200 bg-white text-gray-900',
+  }
+  return (
+    <div className={`rounded-xl border p-4 ${tones[tone] || tones.gray}`}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">{label}</div>
+      <div className="mt-1 text-2xl font-bold">{value}</div>
+      {sub && <div className="text-xs opacity-70 mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
 function RequestDetail({ request, items, onClose }) {
   const requester = request.requested_by_contact
   return (
