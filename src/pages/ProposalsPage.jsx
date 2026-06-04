@@ -694,7 +694,20 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
                   <div className="text-[10px] text-gray-400 mt-0.5">Final ETA confirmed in the quote.</div>
                 </div>
               </div>
-              {address ? (
+              {proposal.shipment_type === 'warehouse' ? (
+                <div className="border border-blue-200 bg-blue-50 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-blue-700 mb-1">Recipient contact (for warehouse ship-outs)</div>
+                  {proposal.recipient_contact_name ? (
+                    <div className="text-[11px] text-gray-700">
+                      <span className="font-medium">{proposal.recipient_contact_name}</span>
+                      {proposal.recipient_contact_phone ? ` · ${proposal.recipient_contact_phone}` : ''}
+                      {proposal.recipient_contact_email ? ` · ${proposal.recipient_contact_email}` : ''}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-amber-700">No recipient contact captured — ask your account manager to add one.</div>
+                  )}
+                </div>
+              ) : address ? (
                 <div className="border border-gray-200 rounded-lg p-3 bg-white">
                   <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1 flex items-center gap-1"><MapPin size={10} />Delivery address</div>
                   <div className="text-sm font-medium text-gray-900">{address.label || address.street}</div>
@@ -791,7 +804,7 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
       setLoading(true)
       const [propRes, projRes] = await Promise.all([
         supabase.from('proposals')
-          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id')
+          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
           .eq('company_id', company.id)
           .order('created_at', { ascending: false }),
         supabase.from('projects').select('id, project_number, name, stage, proposal_id').eq('company_id', company.id),

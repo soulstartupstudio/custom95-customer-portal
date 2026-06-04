@@ -544,14 +544,14 @@ function Cart({ items, onUpdate, onRemove }) {
 }
 
 // --- ADDRESS PICKER ---
-function AddressPicker({ company, multi, selectedIds, onChange }) {
+function AddressPicker({ company, multi, selectedIds, onChange, onAddressesLoaded }) {
   const [addresses, setAddresses] = useState([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [saveErr, setSaveErr] = useState(null)
-  const [newAddr, setNewAddr] = useState({
-    label: '', street: '', house_number: '', postal_code: '', city: '', country: '', contact_name: '', contact_phone: '',
-  })
+  const [editingId, setEditingId] = useState(null)
+  const emptyAddr = { label: '', street: '', house_number: '', postal_code: '', city: '', country: '', contact_name: '', contact_phone: '', contact_email: '' }
+  const [newAddr, setNewAddr] = useState(emptyAddr)
 
   const load = async () => {
     setLoading(true)
@@ -561,6 +561,7 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
       .eq('company_id', company.id)
       .order('is_default_delivery', { ascending: false })
     setAddresses(data ?? [])
+    onAddressesLoaded?.(data ?? [])
     setLoading(false)
   }
   useEffect(() => { load() }, [company.id])
@@ -574,9 +575,13 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
   }
 
   const save = async () => {
+    // Validate — name+phone+email required for delivery so the team can reach the recipient
     if (!newAddr.street.trim() || !newAddr.city.trim()) { setSaveErr('Street and city are required.'); return }
+    if (!newAddr.contact_name.trim()) { setSaveErr('On-site contact name is required.'); return }
+    if (!newAddr.contact_phone.trim()) { setSaveErr('On-site contact phone is required.'); return }
+    if (!newAddr.contact_email.trim()) { setSaveErr('On-site contact email is required.'); return }
     setSaveErr(null)
-    const { data, error } = await supabase.from('addresses').insert({
+    const payload = {
       company_id: company.id,
       address_type: 'delivery',
       label: newAddr.label.trim() || null,
@@ -585,14 +590,34 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
       postal_code: newAddr.postal_code.trim() || null,
       city: newAddr.city.trim(),
       country: newAddr.country.trim() || null,
-      contact_name: newAddr.contact_name.trim() || null,
-      contact_phone: newAddr.contact_phone.trim() || null,
-    }).select().single()
-    if (error) { setSaveErr(error.message); return }
+      contact_name: newAddr.contact_name.trim(),
+      contact_phone: newAddr.contact_phone.trim(),
+      contact_email: newAddr.contact_email.trim(),
+    }
+    let res
+    if (editingId) {
+      res = await supabase.from('addresses').update(payload).eq('id', editingId).select().single()
+    } else {
+      res = await supabase.from('addresses').insert(payload).select().single()
+    }
+    if (res.error) { setSaveErr(res.error.message); return }
     setAdding(false)
-    setNewAddr({ label: '', street: '', house_number: '', postal_code: '', city: '', country: '', contact_name: '', contact_phone: '' })
-    setAddresses((arr) => [data, ...arr])
-    toggle(data.id)
+    setEditingId(null)
+    setNewAddr(emptyAddr)
+    setAddresses((arr) => editingId ? arr.map((a) => a.id === editingId ? res.data : a) : [res.data, ...arr])
+    onAddressesLoaded?.(editingId ? addresses.map((a) => a.id === editingId ? res.data : a) : [res.data, ...addresses])
+    if (!editingId) toggle(res.data.id)
+  }
+
+  const startEdit = (a) => {
+    setNewAddr({
+      label: a.label || '', street: a.street || '', house_number: a.house_number || '',
+      postal_code: a.postal_code || '', city: a.city || '', country: a.country || '',
+      contact_name: a.contact_name || '', contact_phone: a.contact_phone || '', contact_email: a.contact_email || '',
+    })
+    setEditingId(a.id)
+    setAdding(true)
+    setSaveErr(null)
   }
 
   return (
@@ -607,29 +632,42 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
         <div className="space-y-2">
           {addresses.map((a) => {
             const active = selectedIds.includes(a.id)
+            const missingContact = !a.contact_name || !a.contact_phone || !a.contact_email
             return (
-              <button
+              <div
                 key={a.id}
-                onClick={() => toggle(a.id)}
-                className={`w-full flex items-start gap-3 px-4 py-3 rounded-lg border text-left transition-colors ${
-                  active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
-                }`}
+                className={`rounded-lg border transition-colors ${active ? 'border-blue-500 bg-blue-50' : missingContact ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
               >
-                <div className={`w-5 h-5 rounded ${multi ? 'rounded' : 'rounded-full'} flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-inset ${
-                  active ? 'bg-blue-600 ring-blue-600' : 'bg-white ring-gray-300'
-                }`}>
-                  {active && <Check size={12} className="text-white" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium text-gray-900 truncate">{a.label || `${a.street} ${a.house_number || ''}`}</div>
-                    {a.is_default_delivery && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Default</span>}
+                <button
+                  onClick={() => toggle(a.id)}
+                  className="w-full flex items-start gap-3 px-4 py-3 text-left"
+                >
+                  <div className={`w-5 h-5 ${multi ? 'rounded' : 'rounded-full'} flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-inset ${active ? 'bg-blue-600 ring-blue-600' : 'bg-white ring-gray-300'}`}>
+                    {active && <Check size={12} className="text-white" />}
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {[a.street, a.house_number].filter(Boolean).join(' ')}{a.postal_code || a.city ? ', ' : ''}{[a.postal_code, a.city].filter(Boolean).join(' ')}{a.country ? `, ${a.country}` : ''}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="text-sm font-medium text-gray-900 truncate">{a.label || `${a.street} ${a.house_number || ''}`}</div>
+                      {a.is_default_delivery && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Default</span>}
+                      {missingContact && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">Contact missing</span>}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {[a.street, a.house_number].filter(Boolean).join(' ')}{a.postal_code || a.city ? ', ' : ''}{[a.postal_code, a.city].filter(Boolean).join(' ')}{a.country ? `, ${a.country}` : ''}
+                    </div>
+                    {!missingContact && (
+                      <div className="text-[11px] text-gray-500 mt-1">
+                        <span className="text-gray-700">{a.contact_name}</span> · {a.contact_phone} · {a.contact_email}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </button>
+                </button>
+                {missingContact && (
+                  <div className="px-4 pb-2 -mt-1 flex items-center gap-2 text-[11px]">
+                    <span className="text-amber-800">Add an on-site contact (name, phone, email) so the team can reach the recipient on delivery day.</span>
+                    <button type="button" onClick={() => startEdit(a)} className="text-blue-600 font-medium hover:text-blue-700">Add now</button>
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
@@ -637,7 +675,7 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
 
       {!adding ? (
         <button
-          onClick={() => setAdding(true)}
+          onClick={() => { setAdding(true); setEditingId(null); setNewAddr(emptyAddr); setSaveErr(null) }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
         >
           <Plus size={14} />Add new address
@@ -645,8 +683,8 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
       ) : (
         <div className="border border-blue-200 bg-blue-50/30 rounded-lg p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-gray-900">New address</div>
-            <button onClick={() => setAdding(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+            <div className="text-sm font-semibold text-gray-900">{editingId ? 'Edit address' : 'New address'}</div>
+            <button onClick={() => { setAdding(false); setEditingId(null); setNewAddr(emptyAddr); setSaveErr(null) }} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
           </div>
           <input type="text" value={newAddr.label} onChange={(e) => setNewAddr({ ...newAddr, label: e.target.value })} placeholder="Label (e.g. HQ, Warehouse)" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
           <div className="grid grid-cols-3 gap-2">
@@ -658,12 +696,17 @@ function AddressPicker({ company, multi, selectedIds, onChange }) {
             <input type="text" value={newAddr.city} onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })} placeholder="City *" className="col-span-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
           </div>
           <input type="text" value={newAddr.country} onChange={(e) => setNewAddr({ ...newAddr, country: e.target.value })} placeholder="Country" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-          <div className="grid grid-cols-2 gap-2">
-            <input type="text" value={newAddr.contact_name} onChange={(e) => setNewAddr({ ...newAddr, contact_name: e.target.value })} placeholder="Contact name" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-            <input type="tel" value={newAddr.contact_phone} onChange={(e) => setNewAddr({ ...newAddr, contact_phone: e.target.value })} placeholder="Contact phone" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          <div className="pt-1 border-t border-blue-200">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold py-1.5">On-site contact <span className="text-red-500">*</span></div>
+            <input type="text" value={newAddr.contact_name} onChange={(e) => setNewAddr({ ...newAddr, contact_name: e.target.value })} placeholder="Contact name *" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <input type="tel" value={newAddr.contact_phone} onChange={(e) => setNewAddr({ ...newAddr, contact_phone: e.target.value })} placeholder="Contact phone *" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+              <input type="email" value={newAddr.contact_email} onChange={(e) => setNewAddr({ ...newAddr, contact_email: e.target.value })} placeholder="Contact email *" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">So the team can reach the recipient on delivery day.</p>
           </div>
           {saveErr && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{saveErr}</div>}
-          <PrimaryButton onClick={save} className="w-full justify-center"><Check size={14} />Save address</PrimaryButton>
+          <PrimaryButton onClick={save} className="w-full justify-center"><Check size={14} />{editingId ? 'Save changes' : 'Save address'}</PrimaryButton>
         </div>
       )}
     </div>
@@ -828,6 +871,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     }]
   })
   const [addressIds, setAddressIds] = useState(resumeDraft?.addressIds ?? [])
+  const [addresses, setAddresses] = useState([]) // populated by AddressPicker via onAddressesLoaded
   const [teamIds, setTeamIds] = useState(resumeDraft?.teamIds ?? (contact?.id ? [contact.id] : []))
   const [form, setForm] = useState(resumeDraft?.form ?? {
     name: prefillItem?.catalogue_item ? `${prefillItem.catalogue_item.name} project` : '',
@@ -837,6 +881,10 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     deadline_at: '',
     shipment_type: 'one_address',
     delivery_notes: '',
+    // Warehouse-shipment recipient contact (proposals.recipient_contact_*)
+    recipient_contact_name: '',
+    recipient_contact_phone: '',
+    recipient_contact_email: '',
   })
 
   // Persist to localStorage on every meaningful change so the floating
@@ -914,13 +962,26 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
 
   const needsAddress = form.shipment_type === 'one_address' || form.shipment_type === 'multiple'
 
+  // True when every selected delivery address has on-site contact info
+  const selectedAddrsHaveContact = () => {
+    if (addressIds.length === 0) return false
+    const byId = Object.fromEntries((addresses || []).map((a) => [a.id, a]))
+    return addressIds.every((id) => {
+      const a = byId[id]
+      return !!(a && a.contact_name && a.contact_phone && a.contact_email)
+    })
+  }
+  const warehouseRecipientReady = () =>
+    !!form.recipient_contact_name.trim() && !!form.recipient_contact_phone.trim() && !!form.recipient_contact_email.trim()
+
   const canAdvance = () => {
     if (step === 0) return !!form.name.trim() && !!form.occasion && (form.occasion !== 'Other' || form.occasion_other.trim()) && !!form.brief_notes.trim()
     if (step === 1) return items.length > 0
     if (step === 2) {
       if (!form.shipment_type) return false
-      if (form.shipment_type === 'one_address') return addressIds.length === 1
-      if (form.shipment_type === 'multiple') return addressIds.length >= 1
+      if (form.shipment_type === 'one_address') return addressIds.length === 1 && selectedAddrsHaveContact()
+      if (form.shipment_type === 'multiple') return addressIds.length >= 1 && selectedAddrsHaveContact()
+      if (form.shipment_type === 'warehouse') return warehouseRecipientReady()
       return true
     }
     if (step === 3) return true
@@ -950,6 +1011,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       proposalPatch.delivery_address_id = addressIds[0]
     } else if (form.shipment_type === 'multiple' && addressIds.length > 0) {
       proposalPatch.delivery_address_ids = addressIds
+    } else if (form.shipment_type === 'warehouse') {
+      // Warehouse case has no customer address — capture the recipient contact
+      // on the proposal so the team has it when stock ships out later.
+      proposalPatch.recipient_contact_name = form.recipient_contact_name.trim() || null
+      proposalPatch.recipient_contact_phone = form.recipient_contact_phone.trim() || null
+      proposalPatch.recipient_contact_email = form.recipient_contact_email.trim() || null
     }
 
     const { data: proposal, error: propErr } = await supabase.from('proposals').insert(proposalPatch).select('id').single()
@@ -1162,7 +1229,47 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                     multi={form.shipment_type === 'multiple'}
                     selectedIds={addressIds}
                     onChange={setAddressIds}
+                    onAddressesLoaded={setAddresses}
                   />
+                  {addressIds.length > 0 && !selectedAddrsHaveContact() && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
+                      <Users size={12} />Add an on-site contact (name, phone, email) on every selected address to continue.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {form.shipment_type === 'warehouse' && (
+                <div className="border border-blue-200 bg-blue-50/40 rounded-lg p-3 space-y-2">
+                  <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                    <Users size={14} className="text-blue-600" />Recipient contact <span className="text-red-500">*</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600">
+                    Stock will land at our warehouse — the team needs a contact for when it's later shipped out to you.
+                  </p>
+                  <input
+                    type="text"
+                    value={form.recipient_contact_name}
+                    onChange={(e) => update('recipient_contact_name', e.target.value)}
+                    placeholder="Contact name *"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="tel"
+                      value={form.recipient_contact_phone}
+                      onChange={(e) => update('recipient_contact_phone', e.target.value)}
+                      placeholder="Phone *"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                    <input
+                      type="email"
+                      value={form.recipient_contact_email}
+                      onChange={(e) => update('recipient_contact_email', e.target.value)}
+                      placeholder="Email *"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
                 </div>
               )}
 

@@ -2,5 +2,5 @@
   "_doc": "Tracks the last point at which we audited the team-app repo for changes that could affect the customer-portal. Updated automatically by the sync workflow.",
   "last_team_app_sha": "c18549d",
   "last_audit_at": "2026-06-04T00:00:00Z",
-  "notes": "Initial baseline. Next audit should diff team-app HEAD against this SHA."
+  "notes": "Audited 2026-06-03 batch. Fixed BREAKING address-contact gate: AddressEditor & wizard AddressPicker now require contact_name + contact_phone + contact_email on every delivery address; wizard delivery step shows inline 'Contact missing' warning + 'Add now' inline edit on existing addresses; for shipment_type='warehouse', the wizard collects recipient_contact_name/phone/email and writes them to new proposals.recipient_contact_* columns (added in migration proposals_recipient_contact_for_warehouse). ProposalDetail + ProjectDetail warehouse cards now display the recipient contact. Display of contact info on regular delivery addresses was already present from earlier work. Deferred: bulk backfill of contact info on legacy customer-created addresses (low value); delivery_notes per-address field (separate scope); proposal status auto-advance (no portal change needed)."
 }

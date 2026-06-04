@@ -491,6 +491,14 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
                     </div>
                     <div className="text-sm font-semibold text-gray-900">Custom95 Warehouse</div>
                     <div className="text-xs text-gray-600 mt-0.5">Stock held with us — request shipments from the Warehouse tab.</div>
+                    {project.proposals?.recipient_contact_name ? (
+                      <div className="text-[11px] text-gray-700 mt-2 pt-2 border-t border-blue-200">
+                        <span className="text-blue-700 uppercase tracking-wide text-[9px] block mb-0.5">Recipient on ship-out</span>
+                        <span className="font-medium">{project.proposals.recipient_contact_name}</span>
+                        {project.proposals.recipient_contact_phone ? ` · ${project.proposals.recipient_contact_phone}` : ''}
+                        {project.proposals.recipient_contact_email ? ` · ${project.proposals.recipient_contact_email}` : ''}
+                      </div>
+                    ) : null}
                   </div>
                   {billingAddress && <AddressCard address={billingAddress} label="Billing address" />}
                 </div>
@@ -699,7 +707,7 @@ export default function ProjectsPage({ company, contact, deepLinkId, deepLinkRev
       setLoading(true)
       const { data } = await supabase
         .from('projects')
-        .select('*, proposals!projects_proposal_id_fkey(proposal_number)')
+        .select('*, proposals!projects_proposal_id_fkey(proposal_number, recipient_contact_name, recipient_contact_phone, recipient_contact_email)')
         .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       if (cancelled) return
