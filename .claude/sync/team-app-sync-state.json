@@ -1,6 +1,6 @@
 {
   "_doc": "Tracks the last point at which we audited the team-app repo for changes that could affect the customer-portal. Updated automatically by the sync workflow.",
-  "last_team_app_sha": "9be1337",
-  "last_audit_at": "2026-06-04T17:30:00Z",
-  "notes": "Added shipment_booked customer-notify event + trigger. Trigger fires AFTER INSERT on warehouse_requests when quoted_price_cents IS NOT NULL (i.e. customer booked via the new portal calculator). Email goes to the requesting contact first (warehouse_requests.requested_by_contact_id), falling back to all portal-active contacts at the company. Subject: '✅ Shipment booked — €X to <city>' with carrier, speed, box count + weight, ship-out timing, VAT-aware price. Reply-to is the AM. customer-notify is at v7."
+  "last_team_app_sha": "7f06a58",
+  "last_audit_at": "2026-06-04T18:00:00Z",
+  "notes": "Audited commit 7f06a58 — team-app added PRODUCT_PRESETS export to shippingCalc.js. Portal already had these (carried over when shippingCalc was first ported). No portal action required from this commit. Separate change in this session: removed the weight-input gate from RequestShipmentWizard — the customer is now never asked for a weight. Resolution order is now stored → preset estimate → silent fallback (250g / 800ml). Inventory write-back only happens when source === 'estimated' (a real preset match), never when 'fallback', so the team always gets to set the true value when fulfilling."
 }

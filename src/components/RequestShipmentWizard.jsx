@@ -240,9 +240,6 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const [shipAsap, setShipAsap] = useState(true)
   const [shipDate, setShipDate] = useState('')
   const [notes, setNotes] = useState('')
-  // Per-inventory-item dim overrides for items missing stored weight/volume.
-  // { [inventory_id]: { weightG, volumeMl } } — strings as typed.
-  const [dimsOverride, setDimsOverride] = useState({})
   // Customer's chosen shipping option per address: { [address_id]: option_id }
   const [chosenOptionByAddress, setChosenOptionByAddress] = useState({})
   // Show prices incl. VAT to the customer by default (most relevant for them)
@@ -297,36 +294,36 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         !!a.contact_name?.trim() && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
       )
     }
-    if (step === 2) return allAddressesPriced && unknownDimsCount === 0 && (shipAsap || !!shipDate)
+    if (step === 2) return allAddressesPriced && (shipAsap || !!shipDate)
     return true
   }
 
   const totalUnitsRequested = items.reduce((s, i) => s + i.qty, 0) * Math.max(1, addressIds.length)
 
   // ── Shipping calculator wiring ────────────────────────────────────────────
-  // Resolve per-item weight/volume in priority order: manual override → stored
-  // value → estimate from product name.
+  // Resolve per-item weight/volume in priority order:
+  //   stored value → preset estimate (from product name) → sensible default.
+  // The customer is never asked for a weight: when nothing matches we fall back
+  // to an average promo-item profile (~250g / 800ml) so the calculator can
+  // always produce a price. The team verifies and updates the real value when
+  // the shipment is processed; we never silently overwrite inventory with
+  // these last-resort defaults.
+  const DEFAULT_FALLBACK_G = 250
+  const DEFAULT_FALLBACK_ML = 800
   const calcItems = useMemo(() => {
     return items.map((it) => {
-      const ov = dimsOverride[it.inventory_id] || {}
-      const ovG = ov.weightG !== '' && ov.weightG != null && Number.isFinite(parseFloat(ov.weightG)) ? parseFloat(ov.weightG) : null
-      const ovMl = ov.volumeMl !== '' && ov.volumeMl != null && Number.isFinite(parseFloat(ov.volumeMl)) ? parseFloat(ov.volumeMl) : null
       const guess = guessProductDims(it.product_name)
       let grams, source
-      if (ovG != null) { grams = ovG; source = 'override' }
-      else if (it.unit_weight_grams != null) { grams = it.unit_weight_grams; source = 'stored' }
+      if (it.unit_weight_grams != null) { grams = it.unit_weight_grams; source = 'stored' }
       else if (guess) { grams = guess.grams; source = 'estimated' }
-      else { grams = null; source = 'unknown' }
+      else { grams = DEFAULT_FALLBACK_G; source = 'fallback' }
       let ml
-      if (ovMl != null) ml = ovMl
-      else if (it.unit_volume_ml != null) ml = it.unit_volume_ml
+      if (it.unit_volume_ml != null) ml = it.unit_volume_ml
       else if (guess) ml = guess.ml
-      else ml = null
+      else ml = DEFAULT_FALLBACK_ML
       return { ...it, grams, ml, source, guessLabel: guess?.label || null }
     })
-  }, [items, dimsOverride])
-
-  const unknownDimsCount = calcItems.filter((x) => x.grams == null).length
+  }, [items])
 
   // Per-address calculator result + default chosen option
   const perAddress = useMemo(() => {
@@ -418,11 +415,13 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     }
 
     // Persist resolved weight/volume back to the inventory rows so future
-    // shipments auto-calculate (best-effort, never blocks).
+    // shipments auto-calculate. Only writes back when the value came from a
+    // real preset match (`estimated`) — never the last-resort `fallback`
+    // default, so the team always gets a chance to set the true value.
     const persisted = new Set()
     for (const ci of calcItems) {
       if (persisted.has(ci.inventory_id)) continue
-      if (ci.source !== 'override' && ci.source !== 'estimated') continue
+      if (ci.source !== 'estimated') continue
       const patch = {}
       if (ci.grams != null) patch.unit_weight_grams = Math.round(ci.grams)
       if (ci.ml != null) patch.unit_volume_ml = Math.round(ci.ml)
@@ -540,40 +539,8 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
 
           {step === 2 && (
             <div className="space-y-5">
-              {/* Unknown weights gate */}
-              {unknownDimsCount > 0 && (
-                <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 space-y-3">
-                  <div className="flex items-center gap-2 text-amber-900">
-                    <AlertCircle size={14} />
-                    <div className="text-sm font-semibold">We need a weight for {unknownDimsCount} item{unknownDimsCount === 1 ? '' : 's'}</div>
-                  </div>
-                  <p className="text-xs text-amber-800">Without it we can't calculate an accurate shipping price. Just type an approximate weight in grams — we'll remember it next time.</p>
-                  <div className="space-y-2">
-                    {calcItems.filter((x) => x.grams == null).map((it) => (
-                      <div key={it.inventory_id} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg p-2">
-                        <div className="text-xs flex-1 min-w-0">
-                          <div className="font-medium text-gray-900 truncate">{it.product_name}{it.variant ? ` · ${it.variant}` : ''}</div>
-                          <div className="text-[10px] text-gray-500">× {it.qty}</div>
-                        </div>
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="g per unit"
-                          value={dimsOverride[it.inventory_id]?.weightG ?? ''}
-                          onChange={(e) => setDimsOverride((prev) => ({
-                            ...prev,
-                            [it.inventory_id]: { ...(prev[it.inventory_id] || {}), weightG: e.target.value },
-                          }))}
-                          className="w-24 px-2 py-1.5 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Calculator results per address */}
-              {unknownDimsCount === 0 && perAddress.map((p) => (
+              {perAddress.map((p) => (
                 <div key={p.addr.id} className="border border-gray-200 rounded-xl overflow-hidden">
                   <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-2">
                     <div className="min-w-0">
