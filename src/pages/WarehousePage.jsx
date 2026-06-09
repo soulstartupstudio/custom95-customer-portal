@@ -62,8 +62,8 @@ function InventoryCard({ item, incomingEta, onClick }) {
 function InventoryDetail({ item, ordersById, addressesById, requestByOrderId, onClose }) {
   const [movements, setMovements] = useState([])
   useEffect(() => {
-    supabase.from('warehouse_movements')
-      .select('id, movement_type, quantity, notes, movement_date, is_reserved, reservation_label, warehouse_order_id')
+    supabase.from('warehouse_movements_client')
+      .select('id, movement_type, quantity, notes, movement_date, is_reserved, reservation_label, warehouse_order_id, actor_display_name, actor_role')
       .eq('inventory_item_id', item.id)
       .order('movement_date', { ascending: false })
       .limit(20)
@@ -112,7 +112,23 @@ function InventoryDetail({ item, ordersById, addressesById, requestByOrderId, on
                             {m.movement_type?.replace(/_/g, ' ')}
                             {m.is_reserved && <span className="text-xs text-amber-600 ml-1">(reserved)</span>}
                           </div>
-                          <div className="text-xs text-gray-400">{formatDate(m.movement_date)}{m.reservation_label ? ` · ${m.reservation_label}` : ''}</div>
+                          <div className="text-xs text-gray-400">
+                            {formatDate(m.movement_date)}
+                            {m.reservation_label ? ` · ${m.reservation_label}` : ''}
+                            {m.actor_display_name && (
+                              <>
+                                {' · '}
+                                <span className="text-gray-500">by {m.actor_display_name}</span>
+                                {m.actor_role && (
+                                  <span className={`ml-1 inline-flex items-center text-[9px] uppercase font-medium px-1 py-0.5 rounded-full ring-1 ring-inset ${
+                                    m.actor_role === 'team' ? 'text-purple-700 bg-purple-50 ring-purple-200' :
+                                    m.actor_role === 'customer' ? 'text-blue-700 bg-blue-50 ring-blue-200' :
+                                    'text-gray-600 bg-gray-50 ring-gray-200'
+                                  }`}>{m.actor_role}</span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                         <div className={`font-medium ${m.movement_type === 'inbound' ? 'text-green-700' : 'text-red-600'}`}>
                           {m.movement_type === 'inbound' ? '+' : '-'}{m.quantity}
@@ -386,8 +402,8 @@ export default function WarehousePage({ company, contact }) {
       let movs = []
       if (invIds.length) {
         const { data } = await supabase
-          .from('warehouse_movements')
-          .select('id, movement_type, quantity, notes, movement_date, inventory_item_id, warehouse_order_id, is_reserved, reservation_label')
+          .from('warehouse_movements_client')
+          .select('id, movement_type, quantity, notes, movement_date, inventory_item_id, warehouse_order_id, is_reserved, reservation_label, actor_display_name, actor_role')
           .in('inventory_item_id', invIds)
           .order('movement_date', { ascending: false })
           .limit(500)
@@ -655,6 +671,7 @@ export default function WarehousePage({ company, contact }) {
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Destination / Order</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">By</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Qty</th>
                   </tr>
                 </thead>
@@ -683,6 +700,20 @@ export default function WarehousePage({ company, contact }) {
                           ) : (
                             <span className="text-gray-400">—</span>
                           )}
+                        </td>
+                        <td className="px-5 py-3 text-xs">
+                          {m.actor_display_name ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <span className="text-gray-700 truncate max-w-[140px]">{m.actor_display_name}</span>
+                              {m.actor_role && (
+                                <span className={`inline-flex items-center text-[9px] uppercase font-medium px-1 py-0.5 rounded-full ring-1 ring-inset ${
+                                  m.actor_role === 'team' ? 'text-purple-700 bg-purple-50 ring-purple-200' :
+                                  m.actor_role === 'customer' ? 'text-blue-700 bg-blue-50 ring-blue-200' :
+                                  'text-gray-600 bg-gray-50 ring-gray-200'
+                                }`}>{m.actor_role}</span>
+                              )}
+                            </div>
+                          ) : <span className="text-gray-400">—</span>}
                         </td>
                         <td className={`px-5 py-3 text-right font-medium ${m.movement_type === 'inbound' ? 'text-green-700' : 'text-red-600'}`}>
                           {m.movement_type === 'inbound' ? '+' : '-'}{m.quantity}
