@@ -1,6 +1,6 @@
 {
   "_doc": "Tracks the last point at which we audited the team-app repo for changes that could affect the customer-portal. Updated automatically by the sync workflow.",
   "last_team_app_sha": "047b52d",
-  "last_audit_at": "2026-06-09T17:30:00Z",
-  "notes": "Added proposal_received internal AM email. customer-notify v9 ships a new event handler that pulls proposal + company + AM (with NB owner fallback) + submitting contact + item count, sends a formatted email to the AM with CTA to the team-app proposal page. New DB trigger notify_team_proposal_received on proposals AFTER INSERT WHEN created_by_client=true (so team-app-created proposals don't double-fire). New optional env var TEAM_APP_URL (defaults to https://app.custom95.com)."
+  "last_audit_at": "2026-06-09T18:00:00Z",
+  "notes": "customer-notify v10 — added 5 new internal AM events (design_approved, design_revision_requested, proposal_item_added, first_login, brand_asset_uploaded) and extended payment_received to ALSO email AM + PM. 5 new DB triggers added: notify_team_design_approved, notify_team_design_revision_requested, notify_team_proposal_item_added (skips initial wizard batch by 60s grace), notify_team_first_login (fires when contacts.last_login_at NULL→non-null), notify_team_brand_asset_uploaded (fires only when uploaded_by IS NULL, i.e. customer-uploaded). design_revision_requested handler distinguishes 'Not right' from normal revision via the [Start over] prefix in client_feedback and titles the email accordingly."
 }
