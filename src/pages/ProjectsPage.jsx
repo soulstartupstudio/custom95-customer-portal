@@ -472,8 +472,16 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-gray-400">Delivery deadline</div>
-                  <div className="text-gray-900 font-medium flex items-center gap-1.5">
+                  <div className="text-gray-900 font-medium flex items-center gap-1.5 flex-wrap">
                     <Calendar size={13} className="text-gray-400" />{formatDate(project.delivery_deadline) || '—'}
+                    {project.eta_locked_at && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 ring-1 ring-green-200 rounded-full px-1.5 py-0.5"
+                        title={`Locked on ${formatDate(project.eta_locked_at)} — your ETA no longer rolls forward each day`}
+                      >
+                        <CheckCircle2 size={9} />ETA locked
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div>
