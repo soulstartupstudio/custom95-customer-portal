@@ -81,7 +81,7 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
       const [mine, all] = await Promise.all([
         supabase
           .from('company_catalogue')
-          .select('id, catalogue_item_id, source_design_id, notes, catalogue_items(*), design_tasks:source_design_id(id, title, latest_file_url, status)')
+          .select('id, catalogue_item_id, source_design_id, notes, catalogue_items(*), design_tasks:source_design_id(id, title, latest_file_url, status, proposal_requested_items:proposal_requested_item_id(colour_choice, size_breakdown, customization_choices, pantone_code))')
           .eq('company_id', company.id),
         supabase.from('catalogue_items').select('*').eq('portal_visible', true).eq('active', true).order('name').limit(200),
       ])
@@ -94,12 +94,14 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
       if (cancelled) return
 
       // Build enriched My-catalogue items: base product (for pricing/colours/MOQ)
-      // overlaid with the approved design's artwork + title so the customer
-      // re-orders the EXACT design, not a blank product.
+      // overlaid with the approved design's artwork + the EXACT approved spec
+      // (colour, sizes, customizations, pantone) so re-orders are locked, not
+      // re-configured.
       const myArr = myRows.map((r) => {
         const base = r.catalogue_items
         const design = r.design_tasks
         const designImage = design ? (mockupUrls[design.id] || design.latest_file_url || null) : null
+        const spec = design?.proposal_requested_items || null
         return {
           ...base,
           _cc_id: r.id,
@@ -107,6 +109,12 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
           _design_title: design?.title || null,
           _design_image: designImage,
           _cc_notes: r.notes || null,
+          _locked_spec: spec ? {
+            colour_choice: spec.colour_choice || null,
+            size_breakdown: spec.size_breakdown || null,
+            customization_choices: spec.customization_choices || null,
+            pantone_code: spec.pantone_code || null,
+          } : null,
         }
       })
       const allArr = all.data ?? []
@@ -219,7 +227,9 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
             design_id: selected._design_id,
             design_title: selected._design_title,
             design_image: selected._design_image,
+            locked_spec: selected._locked_spec || null,
           } : null}
+          isMyCatalogue={mode === 'mine'}
           onClose={() => setSelected(null)}
           onAddedToProposal={() => setSelected(null)}
           onStartNewProposal={(prefilled) => {

@@ -105,7 +105,9 @@ function ProposalPicker({ company, contact, item, choices, qty, onClose, onSelec
   )
 }
 
-export default function CatalogueDetail({ item, company, contact, designContext = null, onClose, onAddedToProposal, onStartNewProposal }) {
+export default function CatalogueDetail({ item, company, contact, designContext = null, isMyCatalogue = false, onClose, onAddedToProposal, onStartNewProposal }) {
+  const lockedSpec = designContext?.locked_spec || null
+  const reorderLocked = !!lockedSpec   // a true pre-approved re-order with a known spec
   const [tiers, setTiers] = useState([])
   const [colours, setColours] = useState([])
   const [customizations, setCustomizations] = useState([])
@@ -159,12 +161,33 @@ export default function CatalogueDetail({ item, company, contact, designContext 
       const customTiers = ccpt?.data ?? []
       const globalTiers = (t.data ?? []).filter((row) => !row.is_sample_tier)
       setTiers(customTiers.length > 0 ? customTiers : globalTiers)
-      setColours(c.data ?? [])
+      const colourList = c.data ?? []
+      const customizationList = cz.data ?? []
+      setColours(colourList)
       setPhotos(p.data ?? [])
-      setCustomizations(cz.data ?? [])
-      if ((c.data ?? []).length > 0) setColour((c.data ?? [])[0])
-      const defaults = (cz.data ?? []).filter((x) => x.is_default).map((x) => x.id)
-      setSelectedCustomizationIds(defaults)
+      setCustomizations(customizationList)
+
+      if (lockedSpec) {
+        // Re-order: lock to the approved configuration.
+        const lockedColour = lockedSpec.colour_choice
+          ? colourList.find((x) => x.colour_name === lockedSpec.colour_choice) || null
+          : null
+        setColour(lockedColour)
+        const lockedCustIds = Array.isArray(lockedSpec.customization_choices)
+          ? lockedSpec.customization_choices.map((x) => x.id).filter(Boolean)
+          : []
+        setSelectedCustomizationIds(lockedCustIds)
+        if (lockedSpec.pantone_code) { setPantoneSelected(true); setPantoneCode(lockedSpec.pantone_code) }
+        if (lockedSpec.size_breakdown && typeof lockedSpec.size_breakdown === 'object') {
+          setSizeBreakdown(lockedSpec.size_breakdown)
+        } else if (lockedSpec.colour_choice == null && item.moq_sales) {
+          setQty(item.moq_sales)
+        }
+      } else {
+        if (colourList.length > 0) setColour(colourList[0])
+        const defaults = customizationList.filter((x) => x.is_default).map((x) => x.id)
+        setSelectedCustomizationIds(defaults)
+      }
     })()
   }, [item.id, company.id])
 
@@ -308,7 +331,20 @@ export default function CatalogueDetail({ item, company, contact, designContext 
               </div>
               <div className="min-w-0 text-sm">
                 <div className="font-semibold text-emerald-900">Re-ordering a pre-approved design</div>
-                <div className="text-[12px] text-emerald-700/80 mt-0.5">Same artwork, same volume pricing. Just set your quantity and add it to a proposal — no new design round needed.</div>
+                <div className="text-[12px] text-emerald-700/80 mt-0.5">{reorderLocked ? 'Same artwork, same colour, same finish. Just set your quantity and add it to a proposal — no new design round needed.' : 'Same artwork and volume pricing. Set your options and add it to a proposal.'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* My-catalogue item with no approved design linked (legacy / mis-added) */}
+          {isMyCatalogue && !designContext && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-amber-500 text-white flex items-center justify-center flex-shrink-0">
+                <Sparkles size={16} />
+              </div>
+              <div className="min-w-0 text-sm">
+                <div className="font-semibold text-amber-900">Saved product — no approved design linked yet</div>
+                <div className="text-[12px] text-amber-700/80 mt-0.5">This product is on your list, but it isn't tied to an approved design, so you'll pick your options below. Ask your account manager to link an approved design for one-click re-orders.</div>
               </div>
             </div>
           )}
@@ -402,8 +438,36 @@ export default function CatalogueDetail({ item, company, contact, designContext 
             </a>
           )}
 
-          {/* Colour picker + inline Pantone match tile */}
-          {(colours.length > 0 || item.pantone_match) && (
+          {/* Approved configuration (read-only) for locked re-orders */}
+          {reorderLocked && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Approved configuration</div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {colour && (
+                  <span className="inline-flex items-center gap-1.5 bg-white border border-gray-200 rounded-full px-2.5 py-1">
+                    <span className="w-3.5 h-3.5 rounded-full ring-1 ring-gray-200" style={{ backgroundColor: colour.hex_code || '#e5e7eb' }} />
+                    {colour.colour_name}
+                  </span>
+                )}
+                {pantoneSelected && pantoneCode && (
+                  <span className="inline-flex items-center gap-1 bg-white border border-indigo-200 text-indigo-700 rounded-full px-2.5 py-1">
+                    <Sparkles size={11} />PMS {pantoneCode}
+                  </span>
+                )}
+                {selectedCustomizations.map((c) => (
+                  <span key={c.id} className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1">
+                    <Paintbrush size={11} className="text-gray-400" />{c.name}{c.surcharge_cents > 0 && <span className="text-amber-700"> +{formatCents(c.surcharge_cents)}</span>}
+                  </span>
+                ))}
+                {!colour && !pantoneSelected && selectedCustomizations.length === 0 && (
+                  <span className="text-xs text-gray-400">As originally approved — set your quantity below.</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Colour picker + inline Pantone match tile (hidden when locked) */}
+          {!reorderLocked && (colours.length > 0 || item.pantone_match) && (
             <div>
               <div className="text-xs text-gray-500 mb-2 font-semibold">
                 Colour {pantoneSelected
@@ -500,8 +564,8 @@ export default function CatalogueDetail({ item, company, contact, designContext 
             </div>
           )}
 
-          {/* Customization picker (multi-select) */}
-          {customizations.length > 0 && (
+          {/* Customization picker (multi-select) — hidden when locked re-order */}
+          {!reorderLocked && customizations.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-2 font-semibold flex items-center gap-1.5">
                 <Paintbrush size={12} />Customizations <span className="text-gray-400 normal-case font-normal">— pick one or more</span>
