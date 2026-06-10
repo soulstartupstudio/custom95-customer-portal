@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star, Paintbrush,
 } from 'lucide-react'
 import { Badge, PrimaryButton, SecondaryButton, formatCents, formatDate } from './ui'
+import { itemLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
 
 const SHIPPING_LABELS = {
   express: { label: 'Express', icon: Zap, tone: 'bg-purple-50 border-purple-200 text-purple-900', accent: 'text-purple-700' },
@@ -209,16 +210,11 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
   const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && effectiveQty < item.pantone_match_moq
   const pantoneAvailableNow = item.pantone_match && !pantoneMOQUnmet
 
-  // ETA: lead_time_days + production_time_days + shipping extra
+  // ETA: lead_time_days + production_time_days + shipping extra (rolling from today)
   const eta = (() => {
-    const lead = item.lead_time_days ?? 0
-    const prod = item.production_time_days ?? 0
-    const ship = shippingExtraDays(item, shippingMethod) ?? 0
-    const days = lead + prod + ship
+    const days = itemLeadDays(item, shippingMethod)
     if (!days) return null
-    const date = new Date()
-    date.setDate(date.getDate() + days)
-    return { days, date }
+    return { days, date: rollingEtaDate(days) }
   })()
 
   // Strip zero-qty entries before saving size_breakdown
@@ -344,6 +340,23 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
             {item.pantone_match && <Badge tone="purple"><Sparkles size={10} className="mr-1" />Pantone match</Badge>}
             {item.custom_made && <Badge tone="yellow">Custom-made</Badge>}
           </div>
+
+          {/* Hero ETA — always visible */}
+          {eta && (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+                <Clock size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-emerald-900">
+                  Estimated delivery ~{eta.days} days · {formatEtaDate(eta.date)}
+                </div>
+                <div className="text-[11px] text-emerald-700/80">
+                  Sourcing + production + {SHIPPING_LABELS[shippingMethod].label.toLowerCase()} shipping. Confirmed when you accept the quote.
+                </div>
+              </div>
+            </div>
+          )}
 
           {item.description && (
             <div>
@@ -633,7 +646,7 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
               </div>
               {eta && (
                 <div className="flex items-center gap-1.5 text-xs text-blue-800 pt-1">
-                  <Clock size={12} />Ready in ~{eta.days} days · est. {formatDate(eta.date.toISOString())}
+                  <Clock size={12} />Ready in ~{eta.days} days · est. {formatEtaDate(eta.date)}
                 </div>
               )}
               <div className="text-[10px] text-blue-700/70 pt-1">

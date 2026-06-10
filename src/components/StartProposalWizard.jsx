@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
+import { itemLeadDays, orderLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
 
 const STEPS = [
   { id: 'basics', label: 'Basics' },
@@ -857,6 +858,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       reference_url: null,
       notes: prefillItem.notes || null,
       tiers: prefillItem.tiers || [],
+      _leadDays: itemLeadDays(item, prefillItem.shipping_method),
       colour_choice: prefillItem.colour_choice || null,
       size_breakdown: prefillItem.size_breakdown || null,
       shipping_method: prefillItem.shipping_method || null,
@@ -927,6 +929,8 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         reference_url: null,
         notes: null,
         tiers,
+        // lead time for the rolling ETA (sourcing + production)
+        _leadDays: itemLeadDays(item),
         // catalogue options (for inline picker)
         available_colours: colours,
         available_sizes: sizesParsed,
@@ -958,6 +962,13 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       else hasTBD = true
     }
     return { total, hasTBD }
+  }, [items])
+
+  // Rolling order ETA — the order is gated by the slowest item.
+  const orderEta = useMemo(() => {
+    const days = orderLeadDays(items)
+    if (days == null) return null
+    return { days, date: rollingEtaDate(days) }
   }, [items])
 
   const needsAddress = form.shipment_type === 'one_address' || form.shipment_type === 'multiple'
@@ -1194,6 +1205,21 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                 </div>
                 <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
               </div>
+              {orderEta && (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+                    <CalendarIcon size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-emerald-900">
+                      Estimated delivery ~{orderEta.days} days · {formatEtaDate(orderEta.date)}
+                    </div>
+                    <div className="text-[11px] text-emerald-700/80">
+                      Based on the slowest item. This estimate rolls forward until your quote is accepted, then it's locked.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1322,6 +1348,14 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                       {formatCents(totalCents.total)}{totalCents.hasTBD && ' + TBD items'}
                     </span>
                   </div>
+                  {orderEta && (
+                    <div className="flex items-center justify-between pt-1 text-xs">
+                      <span className="text-gray-500">Estimated delivery</span>
+                      <span className="text-emerald-700 font-semibold inline-flex items-center gap-1">
+                        <CalendarIcon size={11} />~{orderEta.days} days · {formatEtaDate(orderEta.date)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Shipping</div>

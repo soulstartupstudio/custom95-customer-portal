@@ -8,6 +8,7 @@ import {
 import { PageHeader, StatusBadge, EmptyState, Spinner, PrimaryButton, Table, formatCents, formatDate, Badge, SecondaryButton, SectionBlock, deriveQuoteBreakdown } from '../components/ui'
 import AddRequestedItem from '../components/AddRequestedItem'
 import DesignDrawer from '../components/DesignDrawer'
+import { rollingEtaDate, formatEtaDate } from '../lib/eta'
 import QuoteDrawer from '../components/QuoteDrawer'
 import { fetchDesignMockupUrls } from '../lib/designThumbnails'
 
@@ -197,7 +198,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
     (async () => {
       const [fRes, iRes, qRes, tRes, dRes] = await Promise.all([
         supabase.from('proposal_files').select('id, file_name, file_type, storage_url, created_at').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
-        supabase.from('proposal_requested_items').select('*, catalogue_items(main_photo_url)').eq('proposal_id', proposal.id).order('created_at'),
+        supabase.from('proposal_requested_items').select('*, catalogue_items(main_photo_url, lead_time_days, production_time_days)').eq('proposal_id', proposal.id).order('created_at'),
         supabase.from('quotes').select('*').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
         supabase.from('proposal_contacts').select('role, contacts(id, first_name, last_name, role, email, profile_image_url)').eq('proposal_id', proposal.id),
         supabase.from('design_tasks').select('*, proposal_requested_items!proposal_requested_item_id(reference_url, catalogue_items(main_photo_url))').eq('proposal_id', proposal.id).order('created_at'),
@@ -339,6 +340,25 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
 
   const stage = JOURNEY.find((s) => s.id === proposal.status) || JOURNEY[0]
   const leadContact = team.find((t) => t.role === 'lead')?.contacts
+
+  // Rolling delivery ETA — gated by the slowest item (sourcing + production).
+  // Prefers proposal.lead_days if the team has set it; otherwise computes from
+  // the catalogue items. Rolls forward each day until the proposal converts to
+  // a project (where the ETA gets locked).
+  const orderEta = useMemo(() => {
+    let leadDays = proposal.lead_days ?? null
+    if (leadDays == null) {
+      let max = 0
+      for (const it of items) {
+        const ci = it.catalogue_items
+        const d = (Number(ci?.lead_time_days) || 0) + (Number(ci?.production_time_days) || 0)
+        if (d > max) max = d
+      }
+      leadDays = max > 0 ? max : null
+    }
+    if (leadDays == null) return null
+    return { days: leadDays, date: rollingEtaDate(leadDays) }
+  }, [items, proposal.lead_days])
 
   return (
     <div className="fixed inset-0 z-40 bg-black/30 flex justify-end" onClick={onClose}>
@@ -681,6 +701,22 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
             tone="blue"
           >
             <div className="space-y-3">
+              {/* Rolling estimated delivery — prominent */}
+              {orderEta && (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+                    <Clock size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-emerald-900">
+                      Estimated delivery ~{orderEta.days} days · {formatEtaDate(orderEta.date)}
+                    </div>
+                    <div className="text-[11px] text-emerald-700/80">
+                      Rolling estimate from today. It locks to a firm date once your quote is accepted and the order becomes a project.
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-gray-400">Shipping</div>
@@ -691,7 +727,6 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
                   <div className="text-gray-900 inline-flex items-center gap-1.5">
                     <Calendar size={12} className="text-gray-400" />{formatDate(proposal.deadline_at) || 'No deadline'}
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">Final ETA confirmed in the quote.</div>
                 </div>
               </div>
               {proposal.shipment_type === 'warehouse' ? (
@@ -804,7 +839,7 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
       setLoading(true)
       const [propRes, projRes] = await Promise.all([
         supabase.from('proposals')
-          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
+          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, lead_days, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
           .eq('company_id', company.id)
           .order('created_at', { ascending: false }),
         supabase.from('projects').select('id, project_number, name, stage, proposal_id').eq('company_id', company.id),
