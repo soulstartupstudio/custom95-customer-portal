@@ -661,8 +661,8 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
         company={company}
         contact={contact}
         item={item}
-        choices={{ colour, size, qty, shippingMethod, customizationNotes }}
-        qty={qty}
+        choices={{ colour, sizeBreakdown, qty: effectiveQty, shippingMethod, customizationNotes }}
+        qty={effectiveQty}
         onClose={() => setShowProposalPicker(false)}
         onSelect={(p) => insertItem(p.id)}
         onCreateNew={handleStartNewProposal}
