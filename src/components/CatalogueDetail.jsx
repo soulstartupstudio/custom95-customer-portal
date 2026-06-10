@@ -105,7 +105,7 @@ function ProposalPicker({ company, contact, item, choices, qty, onClose, onSelec
   )
 }
 
-export default function CatalogueDetail({ item, company, contact, onClose, onAddedToProposal, onStartNewProposal }) {
+export default function CatalogueDetail({ item, company, contact, designContext = null, onClose, onAddedToProposal, onStartNewProposal }) {
   const [tiers, setTiers] = useState([])
   const [colours, setColours] = useState([])
   const [customizations, setCustomizations] = useState([])
@@ -168,19 +168,19 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     })()
   }, [item.id, company.id])
 
-  // Photo gallery: main_photo_url + catalogue_photos
+  // Photo gallery: design mockup first (for re-orders) → main_photo_url → catalogue_photos
   const allPhotos = useMemo(() => {
     const arr = []
-    if (item.main_photo_url) arr.push({ url: item.main_photo_url, caption: 'Main' })
+    if (designContext?.design_image) arr.push({ url: designContext.design_image, caption: 'Your approved design' })
+    if (item.main_photo_url && item.main_photo_url !== designContext?.design_image) arr.push({ url: item.main_photo_url, caption: 'Blank product' })
     for (const p of photos) arr.push({ url: p.photo_url, caption: p.caption })
-    // also colour swatches that have photo_url
     for (const c of colours) {
       if (c.photo_url && !arr.some((x) => x.url === c.photo_url)) {
         arr.push({ url: c.photo_url, caption: c.colour_name })
       }
     }
     return arr
-  }, [item.main_photo_url, photos, colours])
+  }, [item.main_photo_url, photos, colours, designContext])
 
   // Sizes — parse free-text available_sizes
   const sizes = useMemo(() => {
@@ -230,11 +230,14 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
     setBusy(true); setError(null)
     const useP = pantoneSelected && pantoneAvailableNow
     const choices = selectedCustomizations.map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0 }))
+    // For re-orders, the description names the design and we link the source.
+    const reorderNote = designContext ? `Re-order of pre-approved design: ${designContext.design_title || 'approved design'}` : null
+    const combinedNotes = [reorderNote, customizationNotes.trim() || null].filter(Boolean).join('\n') || null
     const { error: err } = await supabase.from('proposal_requested_items').insert({
       proposal_id: proposalId,
       company_id: company.id,
       catalogue_item_id: item.id,
-      description: item.name,
+      description: designContext?.design_title || item.name,
       quantity: effectiveQty,
       colour_choice: useP ? null : (colour?.colour_name || null),
       size_breakdown: cleanSizeBreakdown(),
@@ -244,7 +247,9 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       customization_name: choices.length ? choices.map((c) => c.name).join(', ') : null,
       customization_surcharge_cents: choices.length ? choices.reduce((s, c) => s + (c.surcharge_cents || 0), 0) : null,
       pantone_code: useP ? (pantoneCode.trim() || null) : null,
-      notes: customizationNotes.trim() || null,
+      notes: combinedNotes,
+      reference_url: designContext?.design_image || null,
+      source_design_id: designContext?.design_id || null,
       requested_by_contact_id: contact.id,
     })
     setBusy(false)
@@ -274,6 +279,9 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       available_colours: colours,
       available_sizes: sizes,
       available_customizations: customizations,
+      // Re-order linkage
+      design_context: designContext || null,
+      description_override: designContext?.design_title || null,
     })
     setShowProposalPicker(false)
     onClose()
@@ -285,13 +293,26 @@ export default function CatalogueDetail({ item, company, contact, onClose, onAdd
       <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 truncate">{item.sku || item.category || 'Product'}</div>
-            <h2 className="text-lg font-semibold text-gray-900 truncate">{item.name}</h2>
+            <div className="text-xs text-gray-500 truncate">{designContext ? `Re-order · on ${item.name}` : (item.sku || item.category || 'Product')}</div>
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{designContext?.design_title || item.name}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Re-order banner */}
+          {designContext && (
+            <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+                <Check size={16} />
+              </div>
+              <div className="min-w-0 text-sm">
+                <div className="font-semibold text-emerald-900">Re-ordering a pre-approved design</div>
+                <div className="text-[12px] text-emerald-700/80 mt-0.5">Same artwork, same volume pricing. Just set your quantity and add it to a proposal — no new design round needed.</div>
+              </div>
+            </div>
+          )}
+
           {/* Photo gallery */}
           {allPhotos.length > 0 ? (
             <div>

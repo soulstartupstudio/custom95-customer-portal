@@ -851,11 +851,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     return [{
       type: 'catalogue',
       catalogue_item_id: item.id,
-      description: item.name,
+      description: prefillItem.description_override || item.name,
       category: item.category,
       photo_url: prefillItem.photo_url || item.main_photo_url,
       quantity: prefillItem.quantity || item.moq_sales || 50,
-      reference_url: null,
+      reference_url: prefillItem.design_context?.design_image || null,
+      source_design_id: prefillItem.design_context?.design_id || null,
       notes: prefillItem.notes || null,
       tiers: prefillItem.tiers || [],
       _leadDays: itemLeadDays(item, prefillItem.shipping_method),
@@ -1056,6 +1057,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
           customization_surcharge_cents: choices.length ? choices.reduce((s, c) => s + (c.surcharge_cents || 0), 0) : null,
           size_breakdown: it.size_breakdown || null,
           pantone_code: it.pantone_code?.trim() || null,
+          source_design_id: it.source_design_id || null,
           requested_by_contact_id: contact.id,
         }
       })
