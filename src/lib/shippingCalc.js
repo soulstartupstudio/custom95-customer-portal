@@ -179,26 +179,26 @@ export function interpolateRate(weightTiers, rates, weight) {
   return rates[0]
 }
 
-export function fitBoxes(totalWeight, totalVolume) {
+// Box shape can be the static BOXES ({volume,maxWeight}) or a DB row ({volume_l,max_weight_kg}).
+const boxVol = (b) => Number(b.volume ?? b.volume_l ?? 0)
+const boxMaxW = (b) => Number(b.maxWeight ?? b.max_weight_kg ?? 0)
+
+export function fitBoxes(totalWeight, totalVolume, boxesList = BOXES) {
   if (totalWeight === 0 || totalVolume === 0) return { totalBoxes: 0, breakdown: [], weightPerBox: 0 }
+  const list = (boxesList && boxesList.length) ? boxesList : BOXES
 
-  for (let bi = 0; bi < BOXES.length; bi++) {
-    const box = BOXES[bi]
-    const boxesByVolume = Math.ceil(totalVolume / box.volume)
-    const boxesByWeight = Math.ceil(totalWeight / box.maxWeight)
-    const needed = Math.max(boxesByVolume, boxesByWeight)
-
-    if (needed === 1) {
-      return { totalBoxes: 1, breakdown: [{ count: 1, label: box.label, name: box.name, maxWeight: box.maxWeight }], weightPerBox: totalWeight }
-    }
-    if (needed <= 4) {
-      return { totalBoxes: needed, breakdown: [{ count: needed, label: box.label, name: box.name, maxWeight: box.maxWeight }], weightPerBox: totalWeight / needed }
+  // Prefer the SMALLEST single box that holds everything (both weight and volume).
+  // (Boxes are ordered small → large.) So 10 caps go in one box, not four small ones.
+  for (const box of list) {
+    if (totalVolume <= boxVol(box) && totalWeight <= boxMaxW(box)) {
+      return { totalBoxes: 1, breakdown: [{ count: 1, label: box.label, name: box.name, maxWeight: boxMaxW(box) }], weightPerBox: totalWeight }
     }
   }
 
-  const xl = BOXES[BOXES.length - 1]
-  const needed = Math.max(Math.ceil(totalVolume / xl.volume), Math.ceil(totalWeight / xl.maxWeight))
-  return { totalBoxes: needed, breakdown: [{ count: needed, label: xl.label, name: xl.name, maxWeight: xl.maxWeight }], weightPerBox: totalWeight / needed }
+  // Doesn't fit in any single box → use multiples of the largest box.
+  const xl = list[list.length - 1]
+  const needed = Math.max(Math.ceil(totalVolume / boxVol(xl)), Math.ceil(totalWeight / boxMaxW(xl)))
+  return { totalBoxes: needed, breakdown: [{ count: needed, label: xl.label, name: xl.name, maxWeight: boxMaxW(xl) }], weightPerBox: totalWeight / needed }
 }
 
 export function distributeWeight(totalWeight, boxResult) {
@@ -212,7 +212,7 @@ export function distributeWeight(totalWeight, boxResult) {
 // items: [{ weightKg, volumeL, quantity }]  ·  country: canonical name
 // Returns totals, box breakdown, and an `options` array (one per carrier/service)
 // with .total (excl VAT, incl margin) and .totalInclVat.
-export function calcShipment({ items = [], country }) {
+export function calcShipment({ items = [], country, config = null }) {
   let totalItems = 0, totalWeight = 0, totalVolume = 0
   for (const it of items) {
     const q = it.quantity || 0
@@ -221,11 +221,43 @@ export function calcShipment({ items = [], country }) {
     totalVolume += q * (it.volumeL || 0)
   }
   const packedVolume = totalVolume * 1.2
-  const boxResult = fitBoxes(totalWeight, packedVolume)
+  const boxResult = fitBoxes(totalWeight, packedVolume, config?.boxes)
   const perBoxWeights = distributeWeight(totalWeight, boxResult)
 
   const options = []
 
+  // ── Config-driven pricing (editable Standard/Express, base + €/kg per country) ──
+  if (config?.rates && country && totalItems > 0 && totalWeight > 0) {
+    for (const svc of (config.services || [])) {
+      const rate = config.rates?.[country]?.[svc.key]
+      if (!rate) continue
+      const margin = svc.margin != null ? svc.margin : MARGIN
+      let total = 0
+      perBoxWeights.forEach(w => {
+        const perBoxEur = (Number(rate.baseCents || 0) + Number(rate.perKgCents || 0) * w) / 100
+        total += perBoxEur * (1 + margin)
+      })
+      const opt = makeOption(svc.key, svc.label, '', svc.speed || '', total, perBoxWeights.length)
+      // ETA = today + transit days (upper bound of the service speed, e.g. "2–5 days" → 5).
+      const days = transitDaysFromSpeed(svc.speed)
+      opt.etaDays = days
+      opt.etaDate = etaDateFromDays(days)
+      options.push(opt)
+    }
+    if (options.length > 0) {
+      const cheapest = [...options].sort((a, b) => a.total - b.total)[0]
+      cheapest.tag = 'cheapest'
+      const parseDays = s => { const m = String(s).match(/(\d+)\s*day/); return m ? parseInt(m[1]) : 99 }
+      const fastest = [...options].sort((a, b) => parseDays(a.speed) - parseDays(b.speed))[0]
+      if (fastest.tag !== 'cheapest') fastest.tag = 'fastest'
+    }
+    return {
+      totalItems, totalWeightKg: totalWeight, totalVolumeL: totalVolume, packedVolumeL: packedVolume,
+      boxResult, perBoxWeights, boxes: perBoxWeights.length, options,
+    }
+  }
+
+  // ── Legacy carrier-table fallback (used only when no config is supplied) ──
   if (country && totalItems > 0 && totalWeight > 0) {
     // DHL Economy (not available for Netherlands domestic)
     if (country !== 'Netherlands' && ecoCountryZone[country] !== undefined) {
@@ -291,6 +323,36 @@ export function calcShipment({ items = [], country }) {
   }
 }
 
+// Upper bound of a transit-speed string ("2–5 days" → 5, "1 day" → 1, "" → null).
+export function transitDaysFromSpeed(speed) {
+  if (!speed) return null
+  const nums = String(speed).match(/\d+/g)
+  if (!nums || nums.length === 0) return null
+  return parseInt(nums[nums.length - 1], 10)
+}
+// Delivery date = today + N working days (carriers don't deliver Sat/Sun, so
+// weekends are skipped). e.g. ordering Fri with 1 transit day → Monday.
+export function etaDateFromDays(days) {
+  if (days == null) return null
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  let added = 0
+  const target = Number(days)
+  while (added < target) {
+    d.setDate(d.getDate() + 1)
+    const dow = d.getDay() // 0 = Sunday, 6 = Saturday
+    if (dow !== 0 && dow !== 6) added++
+  }
+  // If it still lands on a weekend (e.g. target 0), nudge to the next weekday.
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  return d
+}
+// Format a date as "Mon, 20 Jul 2026".
+export function formatEtaDate(date) {
+  if (!date) return null
+  return new Date(date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 function makeOption(id, carrier, sub, speed, total, boxes) {
   return {
     id,
@@ -303,4 +365,26 @@ function makeOption(id, carrier, sub, speed, total, boxes) {
     totalInclVat: total * (1 + VAT_RATE),
     tag: null,
   }
+}
+
+// ── Load the editable shipping config from the DB (boxes / services / country rates).
+// Pass the result as `config` to calcShipment(). Returns { boxes, services, rates, countries }.
+export async function loadShippingConfig(supabase) {
+  const [boxesRes, servicesRes, ratesRes] = await Promise.all([
+    supabase.from('shipping_boxes').select('name, label, volume_l, max_weight_kg, sort_order').eq('active', true).order('sort_order'),
+    supabase.from('shipping_services').select('key, label, speed, margin_pct, sort_order').eq('active', true).order('sort_order'),
+    supabase.from('shipping_country_rates').select('country, service_key, base_cents, per_kg_cents').eq('active', true),
+  ])
+  const boxes = (boxesRes.data || []).map(b => ({
+    name: b.name, label: b.label, volume_l: Number(b.volume_l), max_weight_kg: Number(b.max_weight_kg),
+  }))
+  const services = (servicesRes.data || []).map(s => ({
+    key: s.key, label: s.label, speed: s.speed, margin: Number(s.margin_pct),
+  }))
+  const rates = {}
+  for (const r of (ratesRes.data || [])) {
+    if (!rates[r.country]) rates[r.country] = {}
+    rates[r.country][r.service_key] = { baseCents: r.base_cents, perKgCents: r.per_kg_cents }
+  }
+  return { boxes, services, rates, countries: Object.keys(rates).sort() }
 }

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatDate } from './ui'
 import AddressEditor from './AddressEditor'
-import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE } from '../lib/shippingCalc'
+import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE, loadShippingConfig, formatEtaDate } from '../lib/shippingCalc'
 
 const STEPS = [
   { id: 'items', label: 'Items' },
@@ -244,6 +244,14 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const [chosenOptionByAddress, setChosenOptionByAddress] = useState({})
   // Show prices incl. VAT to the customer by default (most relevant for them)
   const [vatInclusive, setVatInclusive] = useState(true)
+  const [shipConfig, setShipConfig] = useState(null) // editable boxes / services / country rates
+
+  // Load the editable shipping config (set up by the team in Warehouse → Shipment rates).
+  useEffect(() => {
+    let cancelled = false
+    loadShippingConfig(supabase).then((cfg) => { if (!cancelled) setShipConfig(cfg) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (addressIds.length === 0) { setAddresses([]); return }
@@ -332,10 +340,10 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
       const calcInput = calcItems
         .filter((x) => x.grams != null)
         .map((x) => ({ weightKg: x.grams / 1000, volumeL: (x.ml ?? 500) / 1000, quantity: x.qty }))
-      const result = calcShipment({ items: calcInput, country })
+      const result = calcShipment({ items: calcInput, country, config: shipConfig })
       return { addr, country, ...result }
     })
-  }, [addresses, calcItems])
+  }, [addresses, calcItems, shipConfig])
 
   // Auto-pick the cheapest option for each address when the picker first loads.
   useEffect(() => {
@@ -400,7 +408,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         quoted_price_includes_vat: !!vatInclusive,
         quoted_carrier_name: opt?.carrier || null,
         quoted_service_id: opt?.id || null,
-        quoted_service_label: opt?.sub || null,
+        quoted_service_label: opt?.sub || opt?.carrier || null,
         quoted_speed: opt?.speed || null,
         quoted_box_count: opt?.boxes || null,
         quoted_total_weight_kg: p.totalWeightKg || null,
@@ -578,6 +586,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                                 </div>
                                 <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
                                   <span className="inline-flex items-center gap-1"><Clock size={10} />{opt.speed}</span>
+                                  {opt.etaDate && (<><span>·</span><span className="text-gray-700 font-medium">📅 {formatEtaDate(opt.etaDate)}</span></>)}
                                   <span>·</span>
                                   <span>{opt.boxes} box{opt.boxes === 1 ? '' : 'es'}</span>
                                 </div>

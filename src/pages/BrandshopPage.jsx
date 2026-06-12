@@ -272,7 +272,7 @@ function CreditModal({ shop, customer, onClose, onSaved }) {
               <input type="checkbox" checked={notifyCustomer} onChange={(e) => setNotifyCustomer(e.target.checked)} className="accent-blue-600" />
               Notify customer by email
             </label>
-            <p className="text-[10px] text-gray-500">Requires Shopify Plus or compatible plan.</p>
+            <p className="text-[10px] text-gray-500">Requires Shopify Plus or compatible plan. The email is sent under your shop's name ({shop.shop_name || shop.shop_domain}); replies go to {shop.owner_email || 'your shop'}.</p>
             {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg p-2">{error}</div>}
             <PrimaryButton onClick={submit} disabled={busy} className="w-full justify-center">
               {busy ? 'Processing…' : 'Apply'}
