@@ -8,6 +8,8 @@ import {
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
 import { itemLeadDays, orderLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
+import { fetchMerchCreditBalance } from '../lib/loyalty'
+import { Gift } from 'lucide-react'
 
 const STEPS = [
   { id: 'basics', label: 'Basics' },
@@ -890,17 +892,29 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     recipient_contact_email: '',
   })
 
+  // Loyalty / merch credit the customer can apply to this proposal. We only
+  // record the *requested* amount on the proposal (portal can't spend the
+  // ledger); the team applies it when they build the quote.
+  const [merchBalance, setMerchBalance] = useState(0)
+  const [merchCreditApplied, setMerchCreditApplied] = useState(resumeDraft?.merchCreditApplied ?? 0)
+  useEffect(() => {
+    if (!company?.id) return
+    let cancelled = false
+    fetchMerchCreditBalance(company.id).then((b) => { if (!cancelled) setMerchBalance(b) })
+    return () => { cancelled = true }
+  }, [company?.id])
+
   // Persist to localStorage on every meaningful change so the floating
   // "Proposal in progress" widget can resume from where the customer left off.
   const submittingRef = useRef(false)
   submittingRef.current = submitting
   useEffect(() => {
     if (!company?.id || submittingRef.current) return
-    const snapshot = { step, form, items, addressIds, teamIds }
+    const snapshot = { step, form, items, addressIds, teamIds, merchCreditApplied }
     if (isDraftMeaningful(snapshot)) {
       saveProposalDraft(company.id, snapshot)
     }
-  }, [company?.id, step, form, items, addressIds, teamIds])
+  }, [company?.id, step, form, items, addressIds, teamIds, merchCreditApplied])
 
   const update = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -965,6 +979,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     return { total, hasTBD }
   }, [items])
 
+  // Loyalty/merch credit folds into the estimate; capped at the balance and the
+  // known (non-TBD) order value, mirroring the team app.
+  const maxCredit = Math.max(0, Math.min(merchBalance, totalCents.total))
+  const creditApplied = Math.max(0, Math.min(merchCreditApplied, maxCredit))
+  const estimateAfterCredit = Math.max(0, totalCents.total - creditApplied)
+
   // Rolling order ETA — the order is gated by the slowest item.
   const orderEta = useMemo(() => {
     const days = orderLeadDays(items)
@@ -1018,6 +1038,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       shipment_type: form.shipment_type,
       delivery_notes: form.delivery_notes.trim() || null,
       created_by_client: true,
+      // Loyalty/merch credit the customer asked to apply — the team seeds the
+      // quote's credit from this (spending happens at quote time).
+      requested_merch_credit_cents: creditApplied > 0 ? creditApplied : null,
     }
     if (form.shipment_type === 'one_address' && addressIds[0]) {
       proposalPatch.delivery_address_id = addressIds[0]
@@ -1350,6 +1373,51 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                       {formatCents(totalCents.total)}{totalCents.hasTBD && ' + TBD items'}
                     </span>
                   </div>
+
+                  {/* Loyalty / merch credit — apply available balance to this proposal */}
+                  {merchBalance > 0 && (
+                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-emerald-800 inline-flex items-center gap-1">
+                          <Gift size={12} />Loyalty / merch credit
+                        </span>
+                        <span className="text-[11px] text-emerald-700">{formatCents(merchBalance)} available</span>
+                      </div>
+                      {maxCredit > 0 ? (
+                        <>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={(creditApplied / 100).toFixed(2)}
+                                onChange={(e) => setMerchCreditApplied(Math.round((parseFloat(e.target.value) || 0) * 100))}
+                                className="w-full pl-6 pr-2 py-1.5 border border-emerald-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setMerchCreditApplied(maxCredit)}
+                              className="text-[11px] font-medium text-emerald-700 hover:underline whitespace-nowrap"
+                            >
+                              Use max
+                            </button>
+                          </div>
+                          {creditApplied > 0 && (
+                            <div className="mt-2 flex items-center justify-between text-xs">
+                              <span className="text-emerald-700">− {formatCents(creditApplied)} credit</span>
+                              <span className="font-semibold text-gray-900">Estimate after credit: {formatCents(estimateAfterCredit)}</span>
+                            </div>
+                          )}
+                          <p className="mt-1 text-[10px] text-emerald-700/80">Your account manager applies this to your quote.</p>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-[10px] text-emerald-700/80">Add priced items to apply your credit — we'll also apply it on your quote.</p>
+                      )}
+                    </div>
+                  )}
                   {orderEta && (
                     <div className="flex items-center justify-between pt-1 text-xs">
                       <span className="text-gray-500">Estimated delivery</span>

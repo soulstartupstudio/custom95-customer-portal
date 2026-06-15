@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { FileText, Receipt, Palette, FolderKanban, ArrowRight, Sparkles, Mail, Phone, Package, Clock } from 'lucide-react'
 import { Card, Badge, StatusBadge, Spinner, formatCents, formatDate, PrimaryButton } from '../components/ui'
+import LoyaltyCard from '../components/LoyaltyCard'
 
 const PLAN_LABELS = { starter: 'Starter', growth: 'Growth', scale: 'Scale', enterprise: 'Enterprise' }
 
@@ -134,6 +135,8 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         <StatCard icon={Palette} label="Designs" value={stats.designs} onClick={() => navigate('designs')} tone="amber" />
         <StatCard icon={FolderKanban} label="Active projects" value={stats.projects} onClick={() => navigate('projects')} tone="green" />
       </div>
+
+      <LoyaltyCard company={company} onUseCredit={() => navigate('proposals')} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
