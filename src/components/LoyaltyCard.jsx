@@ -47,7 +47,7 @@ export default function LoyaltyCard({ company, onUseCredit }) {
         <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
           <Sparkles size={14} className="text-amber-500" />Loyalty &amp; credit
         </h3>
-        <span className="text-[11px] text-gray-400">Rolling 12-month spend</span>
+        <span className="text-[11px] text-gray-400">Rolling 12-month investment</span>
       </div>
 
       <div className="p-5 space-y-5">
@@ -74,7 +74,7 @@ export default function LoyaltyCard({ company, onUseCredit }) {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">
-              You've spent <strong className="text-gray-900">{formatCents(spend)}</strong> in the last 12 months
+              You've invested <strong className="text-gray-900">{formatCents(spend)}</strong> in the last 12 months
             </span>
             {current && (
               <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
@@ -93,8 +93,8 @@ export default function LoyaltyCard({ company, onUseCredit }) {
 
           {next ? (
             <p className="text-xs text-gray-500">
-              Spend <strong className="text-gray-900">{formatCents(toNext)}</strong> more to unlock{' '}
-              <strong className="text-emerald-700">{formatCents(next.credit)}</strong> loyalty credit at {shortEur(next.spend)} annual spend.
+              Invest <strong className="text-gray-900">{formatCents(toNext)}</strong> more to unlock{' '}
+              <strong className="text-emerald-700">{formatCents(next.credit)}</strong> loyalty credit at {shortEur(next.spend)} annual investment.
             </p>
           ) : (
             <p className="text-xs text-emerald-700">You've reached the top loyalty tier — nice work! 🎉</p>
@@ -109,7 +109,7 @@ export default function LoyaltyCard({ company, onUseCredit }) {
             return (
               <div
                 key={t.spend}
-                title={`${shortEur(t.spend)} spend → ${formatCents(t.credit)} credit`}
+                title={`${shortEur(t.spend)} invested → ${formatCents(t.credit)} credit`}
                 className={`text-[10px] px-2 py-1 rounded-full border inline-flex items-center gap-1 ${
                   reached
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
