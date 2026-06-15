@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Check, Trash2 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
+import { SHIPPING_COUNTRIES, normalizeCountry } from '../lib/shippingCalc'
 
 const EMPTY = {
   label: '', street: '', house_number: '', postal_code: '', city: '', country: '',
@@ -22,11 +23,23 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const isEdit = !!address?.id
 
+  // For the shipment-mode country dropdown: map whatever is stored (which may be
+  // an ISO code or native name like "NL"/"Nederland") onto the canonical country
+  // name we have rates for, so an existing address pre-selects correctly.
+  const canonicalCountry = SHIPPING_COUNTRIES.includes(form.country)
+    ? form.country
+    : (normalizeCountry(form.country) || '')
+
   const save = async () => {
     if (!form.street.trim() || !form.city.trim()) { setError('Street and city are required.'); return }
     if (mode === 'shipment') {
-      // Shipments always need name + phone + email so the carrier can reach the
+      // Shipments need a complete, deliverable address: a country we ship to (for
+      // carrier rates), house number + postal code (so the parcel can actually be
+      // delivered), and name + phone + email so the carrier can reach the
       // recipient and we can send tracking. This matches the team-app gate.
+      if (!form.house_number?.trim()) { setError('House number is required for shipments.'); return }
+      if (!form.postal_code?.trim()) { setError('Postal code is required for shipments.'); return }
+      if (!canonicalCountry) { setError('Please choose a destination country we ship to.'); return }
       if (!form.contact_name.trim()) { setError('Recipient name is required for shipments.'); return }
       if (!form.contact_phone.trim()) { setError('Recipient phone is required for shipments.'); return }
       if (!form.contact_email.trim()) { setError('Recipient email is required for shipments.'); return }
@@ -40,7 +53,10 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
       house_number: form.house_number?.trim() || null,
       postal_code: form.postal_code?.trim() || null,
       city: form.city.trim(),
-      country: form.country?.trim() || null,
+      // In shipment mode, persist the canonical country name (e.g. "Netherlands")
+      // so the shipping calculator always finds a rate, regardless of how it was
+      // originally entered. Full-mode addresses keep whatever the user typed.
+      country: (mode === 'shipment' ? canonicalCountry : form.country?.trim()) || null,
       contact_name: form.contact_name?.trim() || null,
       contact_phone: form.contact_phone?.trim() || null,
       contact_email: form.contact_email?.trim() || null,
@@ -77,13 +93,26 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
       <input type="text" value={form.label || ''} onChange={(e) => update('label', e.target.value)} placeholder="Label (e.g. HQ, Office Berlin)" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
       <div className="grid grid-cols-3 gap-2">
         <input type="text" value={form.street || ''} onChange={(e) => update('street', e.target.value)} placeholder="Street *" className="col-span-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-        <input type="text" value={form.house_number || ''} onChange={(e) => update('house_number', e.target.value)} placeholder="Nr." className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+        <input type="text" value={form.house_number || ''} onChange={(e) => update('house_number', e.target.value)} placeholder={mode === 'shipment' ? 'Nr. *' : 'Nr.'} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <input type="text" value={form.postal_code || ''} onChange={(e) => update('postal_code', e.target.value)} placeholder="Postal code" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+        <input type="text" value={form.postal_code || ''} onChange={(e) => update('postal_code', e.target.value)} placeholder={mode === 'shipment' ? 'Postal code *' : 'Postal code'} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
         <input type="text" value={form.city || ''} onChange={(e) => update('city', e.target.value)} placeholder="City *" className="col-span-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
       </div>
-      <input type="text" value={form.country || ''} onChange={(e) => update('country', e.target.value)} placeholder="Country" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+      {mode === 'shipment' ? (
+        <select
+          value={canonicalCountry}
+          onChange={(e) => update('country', e.target.value)}
+          className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${canonicalCountry ? 'text-gray-900' : 'text-gray-400'}`}
+        >
+          <option value="" disabled>Destination country *</option>
+          {SHIPPING_COUNTRIES.map((c) => (
+            <option key={c} value={c} className="text-gray-900">{c}</option>
+          ))}
+        </select>
+      ) : (
+        <input type="text" value={form.country || ''} onChange={(e) => update('country', e.target.value)} placeholder="Country" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+      )}
 
       <div className="pt-2 border-t border-blue-200 space-y-2">
         <div className="text-xs font-semibold text-gray-700">Recipient / contact on site</div>
