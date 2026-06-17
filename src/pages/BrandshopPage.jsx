@@ -44,16 +44,17 @@ function downloadCsv(filename, content) {
 // No tag → "pending". Approve adds it, Revoke removes only it (other tags kept).
 const APPROVAL_TAG = 'approved'
 
-// Only this portal contact may manage customer approval, and only on a brandshop
-// that has customer_approval_enabled. Identifies Tom Toepoel uniquely by email.
+// Only these portal contacts may manage customer approval, and only on a brandshop
+// that has customer_approval_enabled. Identified by email (keep entries lowercase).
 // To switch to role-based gating, compare contact.portal_role instead.
-const APPROVAL_MANAGER_EMAIL = 'tom@drinkstelz.com'
+const APPROVAL_MANAGER_EMAILS = [
+  'tom@drinkstelz.com',
+  'operations+stelz@custom95.nl',
+]
 
 function canManageApproval(shop, contact) {
-  return (
-    !!shop?.customer_approval_enabled &&
-    (contact?.email || '').trim().toLowerCase() === APPROVAL_MANAGER_EMAIL
-  )
+  const email = (contact?.email || '').trim().toLowerCase()
+  return !!shop?.customer_approval_enabled && APPROVAL_MANAGER_EMAILS.includes(email)
 }
 
 function parseTags(tags) {
