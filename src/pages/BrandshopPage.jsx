@@ -44,6 +44,18 @@ function downloadCsv(filename, content) {
 // No tag → "pending". Approve adds it, Revoke removes only it (other tags kept).
 const APPROVAL_TAG = 'approved'
 
+// Only this portal contact may manage customer approval, and only on a brandshop
+// that has customer_approval_enabled. Identifies Tom Toepoel uniquely by email.
+// To switch to role-based gating, compare contact.portal_role instead.
+const APPROVAL_MANAGER_EMAIL = 'tom@drinkstelz.com'
+
+function canManageApproval(shop, contact) {
+  return (
+    !!shop?.customer_approval_enabled &&
+    (contact?.email || '').trim().toLowerCase() === APPROVAL_MANAGER_EMAIL
+  )
+}
+
 function parseTags(tags) {
   return String(tags || '').split(',').map((t) => t.trim()).filter(Boolean)
 }
@@ -601,7 +613,7 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
           {tab === 'customers' && (
             <CustomersTab
               customers={customers}
-              approvalEnabled={!!shop.customer_approval_enabled}
+              approvalEnabled={canManageApproval(shop, contact)}
               onToggleAccess={toggleAccess}
               onAdd={() => setCustomerModal({ mode: 'new' })}
               onEdit={(c) => setCustomerModal({ mode: 'edit', existing: c })}
