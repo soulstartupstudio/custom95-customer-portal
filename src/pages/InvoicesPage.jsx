@@ -38,14 +38,20 @@ export default function InvoicesPage({ company }) {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const { data } = await supabase
+      setError(null)
+      // NOTE: projects↔proposals has two FKs (projects.proposal_id and
+      // proposals.project_id), so the embed MUST name the FK explicitly
+      // (projects_proposal_id_fkey) — otherwise PostgREST errors on the
+      // ambiguous relationship and returns no data.
+      const { data, error: fetchErr } = await supabase
         .from('invoices')
-        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, project_id, projects(name, project_number, proposal_id, proposals(proposal_number))')
+        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, project_id, projects(name, project_number, proposal_id, proposals!projects_proposal_id_fkey(proposal_number))')
         .eq('company_id', company.id)
         .neq('status', 'draft') // hide pre-finalised
         .order('invoice_date', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
       if (cancelled) return
+      if (fetchErr) { setError(`Could not load invoices: ${fetchErr.message}`); setRows([]); setLoading(false); return }
       const enriched = (data ?? []).map((inv) => ({
         ...inv,
         display_project_number: inv.projects?.proposals?.proposal_number ?? inv.projects?.project_number,

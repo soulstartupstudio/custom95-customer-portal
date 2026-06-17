@@ -2,12 +2,29 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Package, TruckIcon, X, AlertTriangle, Activity, Plus, MapPin, Zap, Clock,
-  ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight,
+  ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight, Download,
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
+import { toCsv, downloadCsv, csvDate, csvEur, fileSlug } from '../lib/csv'
 
 const LOW_STOCK_THRESHOLD = 10
+
+// Download the rows the customer can currently see (after filters) as a CSV.
+function ExportCsvButton({ filename, columns, rows, label = 'Download CSV' }) {
+  const disabled = !rows || rows.length === 0
+  return (
+    <button
+      type="button"
+      onClick={() => downloadCsv(filename, toCsv(columns, rows))}
+      disabled={disabled}
+      title={disabled ? 'Nothing to export' : `Download ${rows.length} row${rows.length === 1 ? '' : 's'} as CSV`}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      <Download size={13} />{label}
+    </button>
+  )
+}
 
 function fullAddress(a) {
   if (!a) return null
@@ -501,6 +518,82 @@ export default function WarehousePage({ company, contact }) {
     return true
   })
 
+  // ── CSV exports — each tab downloads exactly the rows the customer sees ──────
+  const slug = fileSlug(company?.name)
+  const today = new Date().toISOString().slice(0, 10)
+  const periodTag = (dateFrom || dateTo) ? `_${dateFrom || 'start'}_to_${dateTo || today}` : ''
+
+  const inventoryCsvColumns = [
+    { header: 'Product', value: (r) => r.product_name },
+    { header: 'Variant', value: (r) => r.variant },
+    { header: 'SKU', value: (r) => r.sku },
+    { header: 'On hand', value: (r) => r.on_hand_qty },
+    { header: 'Reserved', value: (r) => r.reserved_qty },
+    { header: 'Available', value: (r) => r.available_qty },
+    { header: 'Incoming', value: (r) => r.incoming_qty },
+    { header: 'Location', value: (r) => r.warehouse_location },
+  ]
+
+  const orderExportRows = filteredOrders.map((o) => {
+    const addr = o.shipping_address_id ? addressesById[o.shipping_address_id] : null
+    const ms = shipmentMovements[o.id] ?? []
+    return {
+      order_number: o.order_number,
+      order_type: o.order_type,
+      status: o.status,
+      destination: addr ? (addr.label || [addr.city, addr.country].filter(Boolean).join(', ')) : '',
+      items: ms.length,
+      units: ms.reduce((s, m) => s + Math.abs(m.quantity || 0), 0),
+      order_date: o.order_date,
+      eta: o.eta,
+      carrier: o.carrier_name,
+      tracking: o.tracking_number || o.tracking_url || '',
+    }
+  })
+  const orderCsvColumns = [
+    { header: 'Order #', value: (r) => r.order_number },
+    { header: 'Type', value: (r) => r.order_type },
+    { header: 'Status', value: (r) => r.status },
+    { header: 'Destination', value: (r) => r.destination },
+    { header: 'Items', value: (r) => r.items },
+    { header: 'Units', value: (r) => r.units },
+    { header: 'Order date', value: (r) => csvDate(r.order_date) },
+    { header: 'ETA', value: (r) => csvDate(r.eta) },
+    { header: 'Carrier', value: (r) => r.carrier },
+    { header: 'Tracking', value: (r) => r.tracking },
+  ]
+
+  const movementExportRows = filteredMovements.map((m) => {
+    const order = m.warehouse_order_id ? orders.find((o) => o.id === m.warehouse_order_id) : null
+    const addr = order?.shipping_address_id ? addressesById[order.shipping_address_id] : null
+    return {
+      movement_date: m.movement_date,
+      product: invById[m.inventory_item_id]?.product_name || '',
+      type: m.movement_type,
+      reserved: m.is_reserved ? 'yes' : '',
+      reservation_label: m.reservation_label || '',
+      order_number: order?.order_number || '',
+      destination: addr ? (addr.label || [addr.city, addr.country].filter(Boolean).join(', ')) : '',
+      actor: m.actor_display_name || '',
+      actor_role: m.actor_role || '',
+      quantity: (m.movement_type === 'inbound' ? 1 : -1) * (m.quantity || 0),
+      notes: m.notes || '',
+    }
+  })
+  const movementCsvColumns = [
+    { header: 'Date', value: (r) => csvDate(r.movement_date) },
+    { header: 'Item', value: (r) => r.product },
+    { header: 'Type', value: (r) => r.type },
+    { header: 'Reserved', value: (r) => r.reserved },
+    { header: 'Reservation', value: (r) => r.reservation_label },
+    { header: 'Order #', value: (r) => r.order_number },
+    { header: 'Destination', value: (r) => r.destination },
+    { header: 'By', value: (r) => r.actor },
+    { header: 'By role', value: (r) => r.actor_role },
+    { header: 'Quantity', value: (r) => r.quantity },
+    { header: 'Notes', value: (r) => r.notes },
+  ]
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -551,8 +644,14 @@ export default function WarehousePage({ company, contact }) {
         inventory.length === 0 ? (
           <EmptyState icon={Package} title="No inventory" description="Stock will appear here once items are received." />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {inventory.map((i) => <InventoryCard key={i.id} item={i} incomingEta={incomingEtaByInv[i.id]} onClick={() => setSelectedInv(i)} />)}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">Current stock — {inventory.length} item{inventory.length === 1 ? '' : 's'}</span>
+              <ExportCsvButton filename={`${slug}-inventory-${today}.csv`} columns={inventoryCsvColumns} rows={inventory} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {inventory.map((i) => <InventoryCard key={i.id} item={i} incomingEta={incomingEtaByInv[i.id]} onClick={() => setSelectedInv(i)} />)}
+            </div>
           </div>
         )
       )}
@@ -588,6 +687,7 @@ export default function WarehousePage({ company, contact }) {
             dateFrom={dateFrom}
             dateTo={dateTo}
             onDateChange={({ from, to }) => { setDateFrom(from); setDateTo(to) }}
+            extra={<ExportCsvButton filename={`${slug}-shipments-${today}${periodTag}.csv`} columns={orderCsvColumns} rows={orderExportRows} />}
           />
           {filteredOrders.length === 0 ? (
             <EmptyState icon={TruckIcon} title={orders.length === 0 ? 'No shipments' : 'Nothing matches your filters'} description={orders.length === 0 ? 'Confirmed shipments will appear here once processed.' : 'Adjust filters to see more.'} />
@@ -648,7 +748,15 @@ export default function WarehousePage({ company, contact }) {
         </>
       )}
 
-      {tab === 'spend' && <SpendTab requests={requests} />}
+      {tab === 'spend' && (
+        <SpendTab
+          requests={requests}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateChange={({ from, to }) => { setDateFrom(from); setDateTo(to) }}
+          filename={`${slug}-shipping-costs-${today}${periodTag}.csv`}
+        />
+      )}
 
       {tab === 'movements' && (
         <>
@@ -659,6 +767,7 @@ export default function WarehousePage({ company, contact }) {
             dateFrom={dateFrom}
             dateTo={dateTo}
             onDateChange={({ from, to }) => { setDateFrom(from); setDateTo(to) }}
+            extra={<ExportCsvButton filename={`${slug}-movements-${today}${periodTag}.csv`} columns={movementCsvColumns} rows={movementExportRows} />}
           />
           {filteredMovements.length === 0 ? (
             <EmptyState icon={Activity} title={movements.length === 0 ? 'No movements' : 'Nothing matches your filters'} description={movements.length === 0 ? 'Stock movements will appear here.' : 'Adjust filters to see more.'} />
@@ -767,7 +876,7 @@ export default function WarehousePage({ company, contact }) {
 
 // --- Request detail drawer (full view) ---
 // --- Shipping-cost history ---
-function SpendTab({ requests }) {
+function SpendTab({ requests, dateFrom = '', dateTo = '', onDateChange, filename = 'shipping-costs.csv' }) {
   // Only requests that carry a quoted price (i.e. went through the calculator)
   const priced = (requests || []).filter((r) => r.quoted_price_cents != null && r.created_at)
 
@@ -786,9 +895,31 @@ function SpendTab({ requests }) {
   const last30 = priced.filter((r) => inWindow(r, startOfLast30))
   const thisMonth = priced.filter((r) => inWindow(r, startOfThisMonth))
 
-  // Group by year-month
+  // The chosen period scopes the detailed list + monthly breakdown + export.
+  // The top tiles stay as their own labelled windows (this month / 30d / YTD).
+  const rangeRows = priced.filter((r) => {
+    const d = String(r.created_at).slice(0, 10)
+    if (dateFrom && d < dateFrom) return false
+    if (dateTo && d > dateTo) return false
+    return true
+  })
+
+  const spendCsvColumns = [
+    { header: 'Date', value: (r) => csvDate(r.created_at) },
+    { header: 'Recipient', value: (r) => r.ship_to_name || '' },
+    { header: 'City', value: (r) => r.ship_to_city || '' },
+    { header: 'Country', value: (r) => r.ship_to_country || '' },
+    { header: 'Carrier', value: (r) => r.quoted_carrier_name || '' },
+    { header: 'Service', value: (r) => r.quoted_service_label || '' },
+    { header: 'Speed', value: (r) => r.quoted_speed || '' },
+    { header: 'Price (EUR)', value: (r) => csvEur(r.quoted_price_cents) },
+    { header: 'VAT', value: (r) => (r.quoted_price_includes_vat ? 'incl' : 'excl') },
+    { header: 'Status', value: (r) => r.status || '' },
+  ]
+
+  // Group by year-month (within the chosen period)
   const byMonth = {}
-  for (const r of priced) {
+  for (const r of rangeRows) {
     const d = new Date(r.created_at)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     if (!byMonth[key]) byMonth[key] = []
@@ -809,6 +940,18 @@ function SpendTab({ requests }) {
 
   return (
     <div className="space-y-5">
+      {/* Period + export */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500"><Filter size={12} />Period:</span>
+          <input type="date" value={dateFrom} onChange={(e) => onDateChange?.({ from: e.target.value, to: dateTo })} className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          <span className="text-gray-400 text-xs">→</span>
+          <input type="date" value={dateTo} onChange={(e) => onDateChange?.({ from: dateFrom, to: e.target.value })} className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          {(dateFrom || dateTo) && <button onClick={() => onDateChange?.({ from: '', to: '' })} className="text-xs text-gray-500 hover:text-gray-700 ml-1">Clear</button>}
+        </div>
+        <ExportCsvButton filename={filename} columns={spendCsvColumns} rows={rangeRows} />
+      </div>
+
       {/* Top stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatTile label="This month" value={formatCents(sum(thisMonth))} sub={`${thisMonth.length} shipment${thisMonth.length === 1 ? '' : 's'}`} tone="blue" />
@@ -843,9 +986,9 @@ function SpendTab({ requests }) {
 
       {/* Full priced-request list */}
       <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
-        <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700 uppercase tracking-wide">All priced shipments</div>
+        <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700 uppercase tracking-wide">All priced shipments{(dateFrom || dateTo) ? ` · ${rangeRows.length} in period` : ''}</div>
         <div className="divide-y divide-gray-100">
-          {priced.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((r) => (
+          {rangeRows.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((r) => (
             <div key={r.id} className="px-4 py-3 flex items-start gap-3 text-sm">
               <div className="text-xs text-gray-400 w-20 flex-shrink-0">{formatDate(r.created_at)}</div>
               <div className="flex-1 min-w-0">
