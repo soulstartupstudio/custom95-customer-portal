@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Store, ExternalLink, Package, Users as UsersIcon, ShoppingBag, TrendingUp,
-  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText,
+  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText, Search,
 } from 'lucide-react'
 import {
   PageHeader, EmptyState, Spinner, Badge, formatCents, formatDate, PrimaryButton, SecondaryButton,
@@ -37,6 +37,42 @@ function downloadCsv(filename, content) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ---------- Customer approval (tag-based access) ----------
+// A customer counts as "approved" when their Shopify tags contain this tag.
+// No tag → "pending". Approve adds it, Revoke removes only it (other tags kept).
+const APPROVAL_TAG = 'approved'
+
+function parseTags(tags) {
+  return String(tags || '').split(',').map((t) => t.trim()).filter(Boolean)
+}
+function hasTag(tags, tag) {
+  const needle = tag.toLowerCase()
+  return parseTags(tags).some((t) => t.toLowerCase() === needle)
+}
+function addTag(tags, tag) {
+  const list = parseTags(tags)
+  if (!list.some((t) => t.toLowerCase() === tag.toLowerCase())) list.push(tag)
+  return list.join(', ')
+}
+function removeTag(tags, tag) {
+  const needle = tag.toLowerCase()
+  return parseTags(tags).filter((t) => t.toLowerCase() !== needle).join(', ')
+}
+
+function StatPill({ label, count, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-sm font-medium inline-flex items-center gap-2 transition-colors ${
+        active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+      }`}
+    >
+      {label}
+      <span className={`text-xs px-1.5 rounded-full ${active ? 'bg-white/20' : 'bg-white'}`}>{count}</span>
+    </button>
+  )
 }
 
 // ---------- Shop picker (if multiple) ----------
@@ -488,6 +524,31 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
 
   const skusSold = new Set(orderItems.map((i) => i.sku).filter(Boolean)).size
 
+  // Approve/revoke storefront access by toggling the approval tag in Shopify.
+  // Optimistic: flip the local row immediately, revert if the call fails.
+  const toggleAccess = async (c, nextApproved) => {
+    const newTags = nextApproved ? addTag(c.tags, APPROVAL_TAG) : removeTag(c.tags, APPROVAL_TAG)
+    setCustomers((prev) => prev.map((x) => (x.id === c.id ? { ...x, tags: newTags } : x)))
+    try {
+      await invokeShopify({
+        action: 'update_customer',
+        brandshop_id: shop.id,
+        shopify_customer_id: c.shopify_customer_id,
+        email: c.email,
+        first_name: c.first_name,
+        last_name: c.last_name,
+        phone: c.phone || null,
+        company: c.company || null,
+        tags: newTags || null,
+        accepts_marketing: !!c.accepts_marketing,
+      })
+    } catch (e) {
+      setCustomers((prev) => prev.map((x) => (x.id === c.id ? { ...x, tags: c.tags } : x)))
+      alert(e.message)
+      throw e
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -540,6 +601,8 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
           {tab === 'customers' && (
             <CustomersTab
               customers={customers}
+              approvalEnabled={!!shop.customer_approval_enabled}
+              onToggleAccess={toggleAccess}
               onAdd={() => setCustomerModal({ mode: 'new' })}
               onEdit={(c) => setCustomerModal({ mode: 'edit', existing: c })}
               onCredit={(c) => setCreditModal(c)}
@@ -682,13 +745,65 @@ function OrdersTab({ orders, itemsByOrder }) {
   )
 }
 
-function CustomersTab({ customers, onAdd, onEdit, onCredit, onDelete }) {
+function CustomersTab({ customers, approvalEnabled, onToggleAccess, onAdd, onEdit, onCredit, onDelete }) {
+  const [filter, setFilter] = useState('all')   // all | pending | approved
+  const [query, setQuery] = useState('')
+  const [busyId, setBusyId] = useState(null)
+
+  const isApproved = (c) => hasTag(c.tags, APPROVAL_TAG)
+
+  const counts = {
+    all: customers.length,
+    pending: customers.filter((c) => !isApproved(c)).length,
+    approved: customers.filter((c) => isApproved(c)).length,
+  }
+
+  const q = query.trim().toLowerCase()
+  const visible = customers.filter((c) => {
+    if (approvalEnabled) {
+      if (filter === 'pending' && isApproved(c)) return false
+      if (filter === 'approved' && !isApproved(c)) return false
+    }
+    if (!q) return true
+    return [c.first_name, c.last_name, c.company, c.email].filter(Boolean).join(' ').toLowerCase().includes(q)
+  })
+
+  const handleToggle = async (c) => {
+    setBusyId(c.id)
+    try { await onToggleAccess(c, !isApproved(c)) }
+    catch { /* error surfaced by handler */ }
+    finally { setBusyId(null) }
+  }
+
+  const colCount = approvalEnabled ? 11 : 9
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm text-gray-600">{customers.length} customer{customers.length === 1 ? '' : 's'}</div>
         <PrimaryButton onClick={onAdd}><Plus size={14} />Add customer</PrimaryButton>
       </div>
+
+      {approvalEnabled && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex gap-2 flex-wrap">
+            <StatPill label="All" count={counts.all} active={filter === 'all'} onClick={() => setFilter('all')} />
+            <StatPill label="Pending" count={counts.pending} active={filter === 'pending'} onClick={() => setFilter('pending')} />
+            <StatPill label="Approved" count={counts.approved} active={filter === 'approved'} onClick={() => setFilter('approved')} />
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, email, company…"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      )}
+
       {customers.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No customers yet" description="Add your first customer or wait for them to register through your shop." />
       ) : (
@@ -700,30 +815,58 @@ function CustomersTab({ customers, onAdd, onEdit, onCredit, onDelete }) {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Company</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                {approvalEnabled && <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>}
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Orders</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Spent</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Since</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Credit</th>
+                {approvalEnabled && <th className="px-5 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Access</th>}
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => (
-                <tr key={c.id} className="border-b border-gray-50 last:border-0">
-                  <td className="px-5 py-3 text-gray-900 font-medium">{[c.first_name, c.last_name].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="px-5 py-3 text-gray-700">{c.company || '—'}</td>
-                  <td className="px-5 py-3">{c.email ? <a href={`mailto:${c.email}`} className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"><Mail size={11} />{c.email}</a> : '—'}</td>
-                  <td className="px-5 py-3 text-gray-700">{c.phone || '—'}</td>
-                  <td className="px-5 py-3 text-right text-gray-700">{c.orders_count ?? 0}</td>
-                  <td className="px-5 py-3 text-right text-gray-900 font-medium">{formatCents(c.total_spent_cents)}</td>
-                  <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(c.shopify_created_at) || '—'}</td>
-                  <td className="px-5 py-3"><button onClick={() => onCredit(c)} className="text-blue-600 hover:text-blue-700 text-sm">View / Add</button></td>
-                  <td className="px-5 py-3 text-right">
-                    <button onClick={() => onEdit(c)} className="text-gray-600 hover:text-blue-600 text-sm mr-3">Edit</button>
-                    <button onClick={() => onDelete(c)} className="text-red-600 hover:text-red-700 text-sm">Delete</button>
-                  </td>
-                </tr>
-              ))}
+              {visible.length === 0 ? (
+                <tr><td colSpan={colCount} className="px-5 py-10 text-center text-sm text-gray-400">No customers match this filter.</td></tr>
+              ) : visible.map((c) => {
+                const approved = isApproved(c)
+                const canToggle = !!c.shopify_customer_id
+                const busy = busyId === c.id
+                return (
+                  <tr key={c.id} className="border-b border-gray-50 last:border-0">
+                    <td className="px-5 py-3 text-gray-900 font-medium">{[c.first_name, c.last_name].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{c.company || '—'}</td>
+                    <td className="px-5 py-3">{c.email ? <a href={`mailto:${c.email}`} className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"><Mail size={11} />{c.email}</a> : '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{c.phone || '—'}</td>
+                    {approvalEnabled && (
+                      <td className="px-5 py-3"><Badge tone={approved ? 'green' : 'yellow'}>{approved ? 'Approved' : 'Pending'}</Badge></td>
+                    )}
+                    <td className="px-5 py-3 text-right text-gray-700">{c.orders_count ?? 0}</td>
+                    <td className="px-5 py-3 text-right text-gray-900 font-medium">{formatCents(c.total_spent_cents)}</td>
+                    <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(c.shopify_created_at) || '—'}</td>
+                    <td className="px-5 py-3"><button onClick={() => onCredit(c)} className="text-blue-600 hover:text-blue-700 text-sm">View / Add</button></td>
+                    {approvalEnabled && (
+                      <td className="px-5 py-3 text-center">
+                        <button
+                          onClick={() => handleToggle(c)}
+                          disabled={!canToggle || busy}
+                          title={canToggle ? undefined : 'Customer not synced to Shopify yet'}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            approved
+                              ? 'text-red-600 border-gray-200 hover:bg-red-50'
+                              : 'text-white bg-gray-900 border-gray-900 hover:bg-gray-800'
+                          }`}
+                        >
+                          {busy ? '…' : approved ? 'Revoke' : 'Approve'}
+                        </button>
+                      </td>
+                    )}
+                    <td className="px-5 py-3 text-right">
+                      <button onClick={() => onEdit(c)} className="text-gray-600 hover:text-blue-600 text-sm mr-3">Edit</button>
+                      <button onClick={() => onDelete(c)} className="text-red-600 hover:text-red-700 text-sm">Delete</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
