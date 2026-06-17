@@ -49,7 +49,6 @@ const APPROVAL_TAG = 'approved'
 // To switch to role-based gating, compare contact.portal_role instead.
 const APPROVAL_MANAGER_EMAILS = [
   'tom@drinkstelz.com',
-  'operations+stelz@custom95.nl',
 ]
 
 function canManageApproval(shop, contact) {
