@@ -562,6 +562,7 @@ function AddressPicker({ company, multi, selectedIds, onChange, onAddressesLoade
       .from('addresses')
       .select('*')
       .eq('company_id', company.id)
+      .is('archived_at', null)
       .order('is_default_delivery', { ascending: false })
     setAddresses(data ?? [])
     onAddressesLoaded?.(data ?? [])

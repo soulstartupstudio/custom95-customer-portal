@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Building2, MapPin, User, Mail, Phone, Hash, Calendar, Sparkles, Plus, Pencil } from 'lucide-react'
+import { Building2, MapPin, User, Mail, Phone, Hash, Calendar, Sparkles, Plus, Pencil, Trash2 } from 'lucide-react'
 import { Card, Badge, Field, Spinner, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 import AddressEditor from '../components/AddressEditor'
 import ContactEditor from '../components/ContactEditor'
@@ -14,7 +14,7 @@ const STATUS_STYLES = {
   churned: 'bg-gray-100 text-gray-600 ring-gray-200',
 }
 
-function AddressCard({ address, onEdit }) {
+function AddressCard({ address, onEdit, onRemove }) {
   const line1 = [address.street, address.house_number].filter(Boolean).join(' ')
   const line2 = [address.postal_code, address.city].filter(Boolean).join(' ')
   return (
@@ -34,6 +34,15 @@ function AddressCard({ address, onEdit }) {
           >
             <Pencil size={13} />
           </button>
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Remove"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
       </div>
       <div className="text-sm text-gray-600 space-y-0.5">
@@ -72,7 +81,7 @@ export default function SettingsPage({ company, contact }) {
         .eq('id', company.id).single()
       if (cancelled) return
       const [addrRes, amRes] = await Promise.all([
-        supabase.from('addresses').select('*').eq('company_id', company.id).order('is_default_delivery', { ascending: false }),
+        supabase.from('addresses').select('*').eq('company_id', company.id).is('archived_at', null).order('is_default_delivery', { ascending: false }),
         co?.am_user_id
           ? supabase.from('users').select('full_name, email, phone, avatar_url').eq('id', co.am_user_id).single()
           : Promise.resolve({ data: null }),
@@ -97,6 +106,15 @@ export default function SettingsPage({ company, contact }) {
   const handleAddressDeleted = (id) => {
     setAddresses((arr) => arr.filter((a) => a.id !== id))
     setEditingAddr(null)
+  }
+
+  // One-click remove from the address card. Soft-delete (archive) so historical
+  // references stay intact; the address just disappears from the book + pickers.
+  const handleAddressRemove = async (a) => {
+    if (!confirm(`Remove ${a.label || 'this address'} from your address book?`)) return
+    const { error } = await supabase.from('addresses').update({ archived_at: new Date().toISOString() }).eq('id', a.id)
+    if (error) { alert('Could not remove the address: ' + error.message); return }
+    handleAddressDeleted(a.id)
   }
 
   if (loading || !data) return <Spinner />
@@ -240,7 +258,7 @@ export default function SettingsPage({ company, contact }) {
                         />
                       </div>
                     ) : (
-                      <AddressCard key={a.id} address={a} onEdit={() => setEditingAddr(a)} />
+                      <AddressCard key={a.id} address={a} onEdit={() => setEditingAddr(a)} onRemove={() => handleAddressRemove(a)} />
                     )
                   )}
                 </div>

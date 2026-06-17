@@ -77,7 +77,14 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
   const del = async () => {
     if (!isEdit) return
     setBusy(true); setError(null)
-    const { error: err } = await supabase.from('addresses').delete().eq('id', address.id)
+    // Soft-delete: addresses are referenced by past proposals/projects/orders
+    // (FK NO ACTION), so a hard delete would fail for any address that's been
+    // used. Archiving hides it from address books + pickers while keeping the
+    // historical link intact.
+    const { error: err } = await supabase
+      .from('addresses')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', address.id)
     setBusy(false)
     if (err) { setError(err.message); return }
     onDeleted?.()
@@ -148,12 +155,12 @@ export default function AddressEditor({ company, address, onSaved, onCancel, onD
               <div className="flex items-center gap-1">
                 <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
                 <button onClick={del} disabled={busy} className="text-xs font-medium text-red-600 hover:text-red-700 inline-flex items-center gap-1">
-                  <Trash2 size={11} />{busy ? '…' : 'Confirm delete'}
+                  <Trash2 size={11} />{busy ? '…' : 'Confirm remove'}
                 </button>
               </div>
             ) : (
               <button onClick={() => setConfirmDelete(true)} className="text-xs text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
-                <Trash2 size={12} />Delete
+                <Trash2 size={12} />Remove
               </button>
             )
           )}

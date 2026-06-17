@@ -100,6 +100,7 @@ export default function AccountPage({ company }) {
           .from('addresses')
           .select('*')
           .eq('company_id', company.id)
+          .is('archived_at', null)
           .order('is_default_delivery', { ascending: false }),
         co?.am_user_id
           ? supabase.from('users').select('full_name, email, phone, avatar_url').eq('id', co.am_user_id).single()

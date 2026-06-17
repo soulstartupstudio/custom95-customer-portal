@@ -11,7 +11,7 @@ import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE, loadShippin
 
 const STEPS = [
   { id: 'items', label: 'Items' },
-  { id: 'addresses', label: 'Addresses' },
+  { id: 'addresses', label: 'Address' },
   { id: 'shipping', label: 'Shipping & price' },
   { id: 'review', label: 'Review' },
 ]
@@ -112,16 +112,28 @@ function AddressPicker({ company, selectedIds, onChange }) {
   const [addresses, setAddresses] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null) // address id being edited, or 'new'
+  const [search, setSearch] = useState('')
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('addresses').select('*').eq('company_id', company.id).order('is_default_delivery', { ascending: false })
+    const { data } = await supabase.from('addresses').select('*').eq('company_id', company.id).is('archived_at', null).order('is_default_delivery', { ascending: false })
     setAddresses(data ?? [])
     setLoading(false)
   }
   useEffect(() => { load() }, [company.id])
 
-  const toggle = (id) => onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id])
+  // Single-select: a shipment request goes to one destination. Picking another
+  // replaces the choice; clicking the selected one clears it.
+  const toggle = (id) => onChange(selectedIds.includes(id) ? [] : [id])
+
+  // Search across the address fields so customers with many saved addresses can
+  // narrow the list quickly.
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? addresses.filter((a) =>
+        [a.label, a.street, a.house_number, a.postal_code, a.city, a.country, a.contact_name, a.contact_email, a.contact_phone]
+          .filter(Boolean).join(' ').toLowerCase().includes(q))
+    : addresses
 
   const handleSaved = (saved) => {
     setAddresses((arr) => {
@@ -134,15 +146,33 @@ function AddressPicker({ company, selectedIds, onChange }) {
 
   return (
     <div className="space-y-2">
+      {/* Search — surfaced once there are enough saved addresses to be worth it */}
+      {!loading && addresses.length > 4 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search addresses by name, city, postcode…"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="text-sm text-gray-400 py-4 text-center">Loading addresses…</div>
       ) : addresses.length === 0 && editingId !== 'new' ? (
         <div className="text-sm text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-lg">
           No addresses yet. Add one below.
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-sm text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-lg">
+          No addresses match “{search.trim()}”.
+        </div>
       ) : (
         <div className="space-y-2">
-          {addresses.map((a) => {
+          {filtered.map((a) => {
             if (editingId === a.id) {
               return (
                 <AddressEditor
@@ -171,8 +201,8 @@ function AddressPicker({ company, selectedIds, onChange }) {
                   onClick={() => toggle(a.id)}
                   className="w-full flex items-start gap-3 px-4 py-3 text-left"
                 >
-                  <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-inset ${active ? 'bg-blue-600 ring-blue-600' : 'bg-white ring-gray-300'}`}>
-                    {active && <Check size={12} className="text-white" />}
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-inset ${active ? 'ring-blue-600' : 'ring-gray-300'}`}>
+                    {active && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -540,7 +570,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
 
           {step === 1 && (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500">Pick one or more destinations. Each needs a recipient we can contact if the carrier has questions.</p>
+              <p className="text-xs text-gray-500">Pick the delivery destination. It needs a recipient we can contact if the carrier has questions.</p>
               <AddressPicker company={company} selectedIds={addressIds} onChange={setAddressIds} />
             </div>
           )}
