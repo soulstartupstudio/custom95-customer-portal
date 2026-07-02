@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { X, Package, Check, Search, Sparkles, ArrowRight } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { itemLeadDays } from '../lib/eta'
+import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
 // Restock hand-off: the customer picked one (or a group of) warehouse items to
 // restock. Before we open the proposal wizard we ask "do you want to add other
@@ -155,12 +156,12 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
     }
 
     // Surface the items that need restocking first: out of stock, then running
-    // low (< 10, matching the warehouse page), then in stock, then products
+    // low (matching the warehouse page threshold), then in stock, then products
     // with no warehouse stock at all. Alphabetical within each group.
     const stockRank = (e) => {
       const q = e.available
       if (q === 0) return 0
-      if (q != null && q < 10) return 1
+      if (q != null && q < LOW_STOCK_THRESHOLD) return 1
       if (q != null) return 2
       return 3
     }
@@ -334,7 +335,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
                         <div className="text-xs text-gray-500 truncate">
                           {e.category || 'Product'}
                           {e.available != null && (
-                            <span className={e.available === 0 ? 'text-red-600' : e.available < 10 ? 'text-amber-600' : ''}>
+                            <span className={e.available === 0 ? 'text-red-600' : e.available < LOW_STOCK_THRESHOLD ? 'text-amber-600' : ''}>
                               {' · '}{e.available === 0 ? 'Out of stock' : `${e.available} in stock`}
                             </span>
                           )}
