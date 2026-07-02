@@ -25,6 +25,36 @@ const FILTERS = [
   { id: 'all', label: 'All' },
 ]
 
+// Work out the best customer-facing reference for an invoice. Not every invoice
+// is tied to a project — warehouse plans, shipment requests, brandshop service
+// etc. often aren't — so fall back through the other links the portal can see:
+//   1. Project        → project name + number
+//   2. Quote/proposal → proposal name + number (e.g. an approved quote with no project yet)
+//   3. Invoice notes  → the free-text the team put on the invoice (customer-facing)
+// Returns { label, sub, title } so the column can show a primary line + hint.
+function resolveReference(inv) {
+  if (inv.project_id && inv.projects) {
+    const num = inv.projects.proposals?.proposal_number ?? inv.projects.project_number
+    return {
+      label: inv.projects.name || (num ? `Project #${num}` : 'Project'),
+      sub: num ? `Project #${num}` : null,
+    }
+  }
+  if (inv.quote_id && inv.quotes?.proposals) {
+    const p = inv.quotes.proposals
+    return {
+      label: p.name || (p.proposal_number ? `Proposal #${p.proposal_number}` : 'Proposal'),
+      sub: p.proposal_number ? `Proposal #${p.proposal_number}` : 'From quote',
+    }
+  }
+  const notes = inv.notes?.trim()
+  if (notes) {
+    const firstLine = notes.split(/\r?\n/)[0]
+    return { label: firstLine, sub: null, title: notes }
+  }
+  return { label: '—', sub: null }
+}
+
 export default function InvoicesPage({ company }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -45,7 +75,7 @@ export default function InvoicesPage({ company }) {
       // ambiguous relationship and returns no data.
       const { data, error: fetchErr } = await supabase
         .from('invoices')
-        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, project_id, projects(name, project_number, proposal_id, proposals!projects_proposal_id_fkey(proposal_number))')
+        .select('id, invoice_number, status, subtotal_cents, vat_amount_cents, discount_cents, total_cents, amount_paid_cents, invoice_date, due_date, paid_at, payment_method, notes, project_id, quote_id, projects(name, project_number, proposal_id, proposals!projects_proposal_id_fkey(proposal_number)), quotes(id, proposal_id, proposals(proposal_number, name))')
         .eq('company_id', company.id)
         .neq('status', 'draft') // hide pre-finalised
         .order('invoice_date', { ascending: false, nullsFirst: false })
@@ -54,7 +84,7 @@ export default function InvoicesPage({ company }) {
       if (fetchErr) { setError(`Could not load invoices: ${fetchErr.message}`); setRows([]); setLoading(false); return }
       const enriched = (data ?? []).map((inv) => ({
         ...inv,
-        display_project_number: inv.projects?.proposals?.proposal_number ?? inv.projects?.project_number,
+        reference: resolveReference(inv),
       }))
       setRows(enriched)
       setLoading(false)
@@ -70,8 +100,8 @@ export default function InvoicesPage({ company }) {
       const q = search.trim().toLowerCase()
       r = r.filter((x) =>
         String(x.invoice_number || '').includes(q) ||
-        x.projects?.name?.toLowerCase().includes(q) ||
-        String(x.display_project_number || '').includes(q)
+        x.reference?.label?.toLowerCase().includes(q) ||
+        x.reference?.sub?.toLowerCase().includes(q)
       )
     }
     return r
@@ -142,7 +172,7 @@ export default function InvoicesPage({ company }) {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search invoice # or project..."
+            placeholder="Search invoice # or reference..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -169,12 +199,12 @@ export default function InvoicesPage({ company }) {
               render: (r) => <span className="font-medium text-gray-900">#{r.invoice_number ?? '—'}</span>,
             },
             {
-              key: 'project',
-              label: 'Project',
+              key: 'reference',
+              label: 'Reference',
               render: (r) => (
-                <div className="min-w-0">
-                  <div className="text-sm text-gray-900 truncate">{r.projects?.name || '—'}</div>
-                  {r.display_project_number && <div className="text-[10px] text-gray-400">Project #{r.display_project_number}</div>}
+                <div className="min-w-0 max-w-[240px]" title={r.reference?.title || undefined}>
+                  <div className="text-sm text-gray-900 truncate">{r.reference?.label || '—'}</div>
+                  {r.reference?.sub && <div className="text-[10px] text-gray-400">{r.reference.sub}</div>}
                 </div>
               ),
             },
