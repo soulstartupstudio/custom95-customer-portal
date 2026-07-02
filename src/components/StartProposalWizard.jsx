@@ -371,8 +371,10 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               }
               onUpdate(idx, patch)
             }}
-            className="w-20 px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-            title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : undefined}
+            className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+              (it.quantity ?? 0) > 0 ? 'border-gray-200' : 'border-amber-400 bg-amber-50'
+            }`}
+            title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : (it.quantity ?? 0) > 0 ? undefined : 'Enter a quantity'}
           />
         </td>
         <td className="px-3 py-2 text-right text-xs text-gray-700">
@@ -1011,9 +1013,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   const warehouseRecipientReady = () =>
     !!form.recipient_contact_name.trim() && !!form.recipient_contact_phone.trim() && !!form.recipient_contact_email.trim()
 
+  // Every item needs a quantity before we can price / move on.
+  const allItemsHaveQty = items.length > 0 && items.every((it) => (it.quantity ?? 0) > 0)
+
   const canAdvance = () => {
     if (step === 0) return !!form.name.trim() && !!form.occasion && (form.occasion !== 'Other' || form.occasion_other.trim()) && !!form.brief_notes.trim()
-    if (step === 1) return items.length > 0
+    if (step === 1) return allItemsHaveQty
     if (step === 2) {
       if (!form.shipment_type) return false
       if (form.shipment_type === 'one_address') return addressIds.length === 1 && selectedAddrsHaveContact()
@@ -1234,6 +1239,11 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                   Cart {items.length > 0 && `· ${items.length} ${items.length === 1 ? 'item' : 'items'}`}
                 </div>
                 <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
+                {items.length > 0 && !allItemsHaveQty && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
+                    <Package size={12} />Enter a quantity for every item to continue.
+                  </div>
+                )}
               </div>
               {orderEta && (
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { X, Package, Check, Search, Sparkles, ArrowRight } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { itemLeadDays } from '../lib/eta'
+import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
 // Restock hand-off: the customer picked one (or a group of) warehouse items to
 // restock. Before we open the proposal wizard we ask "do you want to add other
@@ -33,7 +34,8 @@ function minTierPrice(tiers) {
 }
 
 export default function RestockModal({ company, inventory, preselectedInvIds, onClose, onStart }) {
-  const [catalogueItems, setCatalogueItems] = useState([])
+  const [catalogueItems, setCatalogueItems] = useState([]) // company catalogue = "ordered before" rows
+  const [matchItems, setMatchItems] = useState([])         // global catalogue, used to price warehouse items
   const [tiersByItem, setTiersByItem] = useState({})
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
@@ -45,22 +47,27 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      // "Items they ordered before" = the company catalogue
-      const { data } = await supabase
-        .from('company_catalogue')
-        .select('catalogue_items(*)')
-        .eq('company_id', company.id)
+      const [ccRes, allRes] = await Promise.all([
+        // "Items they ordered before" = the company catalogue (the pickable rows)
+        supabase.from('company_catalogue').select('catalogue_items(*)').eq('company_id', company.id),
+        // Full portal catalogue — lets us price warehouse items that aren't in the
+        // company catalogue (match by name → real tiers instead of a TBD custom line)
+        supabase.from('catalogue_items').select('*').eq('portal_visible', true).eq('active', true).order('name').limit(200),
+      ])
       if (cancelled) return
-      const items = (data ?? []).map((r) => r.catalogue_items).filter(Boolean)
+      const items = (ccRes.data ?? []).map((r) => r.catalogue_items).filter(Boolean)
+      const globalItems = allRes.data ?? []
       setCatalogueItems(items)
+      setMatchItems(globalItems)
 
-      const ids = items.map((i) => i.id)
-      if (ids.length) {
+      // Load tiers for anything we might price: company catalogue + global catalogue.
+      const allIds = [...new Set([...items.map((i) => i.id), ...globalItems.map((i) => i.id)])]
+      if (allIds.length) {
         // Global tiers + company-specific overrides (overrides win per item)
-        const [globalRes, ccRes] = await Promise.all([
-          supabase.from('catalogue_pricing_tiers').select('*').in('catalogue_item_id', ids).order('qty_from'),
+        const [globalRes, ccTiersRes] = await Promise.all([
+          supabase.from('catalogue_pricing_tiers').select('*').in('catalogue_item_id', allIds).order('qty_from'),
           supabase.from('company_catalogue').select('id, catalogue_item_id, company_catalogue_pricing_tiers(*)')
-            .eq('company_id', company.id).in('catalogue_item_id', ids),
+            .eq('company_id', company.id).in('catalogue_item_id', allIds),
         ])
         if (cancelled) return
         const byItem = {}
@@ -68,7 +75,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
           if (t.is_sample_tier) continue
           ;(byItem[t.catalogue_item_id] = byItem[t.catalogue_item_id] || []).push(t)
         }
-        for (const row of ccRes.data ?? []) {
+        for (const row of ccTiersRes.data ?? []) {
           const customTiers = row.company_catalogue_pricing_tiers || []
           if (customTiers.length > 0) byItem[row.catalogue_item_id] = customTiers.sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
         }
@@ -84,11 +91,12 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
   const entries = useMemo(() => {
     const list = []
     const matchedInvIds = new Set()
+    const catByItemId = new Map() // catalogue_item_id → entry (so we can merge)
 
     for (const cat of catalogueItems) {
       const invRows = (inventory ?? []).filter((inv) => matchCatalogue(inv, [cat]))
       invRows.forEach((inv) => matchedInvIds.add(inv.id))
-      list.push({
+      const entry = {
         key: `cat-${cat.id}`,
         kind: 'catalogue',
         name: cat.name,
@@ -97,10 +105,14 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
         catalogueItem: cat,
         invRows,
         available: invRows.length ? invRows.reduce((s, r) => s + (r.available_qty ?? 0), 0) : null,
-      })
+      }
+      catByItemId.set(cat.id, entry)
+      list.push(entry)
     }
 
-    // Warehouse products without a catalogue match → custom (price TBD) lines
+    // Warehouse products not in the company catalogue: try the global catalogue so
+    // they come in priced. Only fall back to a custom (price-TBD) line if nothing
+    // matches anywhere.
     const leftovers = (inventory ?? []).filter((inv) => !matchedInvIds.has(inv.id))
     const byName = {}
     for (const inv of leftovers) {
@@ -108,30 +120,54 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
       ;(byName[k] = byName[k] || []).push(inv)
     }
     for (const rows of Object.values(byName)) {
-      list.push({
-        key: `inv-${rows[0].id}`,
-        kind: 'warehouse',
-        name: rows[0].product_name,
-        category: 'From your warehouse stock',
-        photo: rows[0].product_photo_url,
-        invRows: rows,
-        available: rows.reduce((s, r) => s + (r.available_qty ?? 0), 0),
-      })
+      const avail = rows.reduce((s, r) => s + (r.available_qty ?? 0), 0)
+      const gcat = matchCatalogue(rows[0], matchItems)
+      if (gcat) {
+        const existing = catByItemId.get(gcat.id)
+        if (existing) {
+          // Same product already listed — merge stock in rather than duplicate.
+          existing.invRows = [...existing.invRows, ...rows]
+          existing.available = (existing.available ?? 0) + avail
+        } else {
+          const entry = {
+            key: `cat-${gcat.id}`,
+            kind: 'catalogue',
+            name: gcat.name,
+            category: gcat.category,
+            photo: gcat.main_photo_url || rows[0].product_photo_url,
+            catalogueItem: gcat,
+            invRows: rows,
+            available: avail,
+          }
+          catByItemId.set(gcat.id, entry)
+          list.push(entry)
+        }
+      } else {
+        list.push({
+          key: `inv-${rows[0].id}`,
+          kind: 'warehouse',
+          name: rows[0].product_name,
+          category: 'From your warehouse stock',
+          photo: rows[0].product_photo_url,
+          invRows: rows,
+          available: avail,
+        })
+      }
     }
 
     // Surface the items that need restocking first: out of stock, then running
-    // low (< 10, matching the warehouse page), then in stock, then products
+    // low (matching the warehouse page threshold), then in stock, then products
     // with no warehouse stock at all. Alphabetical within each group.
     const stockRank = (e) => {
       const q = e.available
       if (q === 0) return 0
-      if (q != null && q < 10) return 1
+      if (q != null && q < LOW_STOCK_THRESHOLD) return 1
       if (q != null) return 2
       return 3
     }
     list.sort((a, b) => stockRank(a) - stockRank(b) || normName(a.name).localeCompare(normName(b.name)))
     return list
-  }, [catalogueItems, inventory])
+  }, [catalogueItems, matchItems, inventory])
 
   // Preselect the entries covering the clicked warehouse item(s)
   useEffect(() => {
@@ -209,12 +245,13 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
             customization_choice_ids: customizations.filter((c) => c.is_default).map((c) => c.id),
           }
         }
-        // Warehouse-only product → custom line, priced by the team
+        // Warehouse-only product → custom line, priced by the team. Still give it
+        // a starting quantity so the qty field is never blank in the wizard.
         const skus = e.invRows.map((r) => r.sku).filter(Boolean)
         return {
           type: 'custom',
           description: e.name,
-          quantity: null,
+          quantity: 50,
           reference_url: null,
           notes: `Warehouse restock${skus.length ? ` (SKU ${skus.join(', ')})` : ''}`,
           unit_price_cents: null,
@@ -298,7 +335,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
                         <div className="text-xs text-gray-500 truncate">
                           {e.category || 'Product'}
                           {e.available != null && (
-                            <span className={e.available === 0 ? 'text-red-600' : e.available < 10 ? 'text-amber-600' : ''}>
+                            <span className={e.available === 0 ? 'text-red-600' : e.available < LOW_STOCK_THRESHOLD ? 'text-amber-600' : ''}>
                               {' · '}{e.available === 0 ? 'Out of stock' : `${e.available} in stock`}
                             </span>
                           )}

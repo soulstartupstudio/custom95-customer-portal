@@ -9,8 +9,7 @@ import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, 
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
 import RestockModal from '../components/RestockModal'
 import { toCsv, downloadCsv, csvDate, csvEur, fileSlug } from '../lib/csv'
-
-const LOW_STOCK_THRESHOLD = 10
+import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
 // Download the rows the customer can currently see (after filters) as a CSV.
 function ExportCsvButton({ filename, columns, rows, label = 'Download CSV' }) {
