@@ -118,6 +118,18 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
         available: rows.reduce((s, r) => s + (r.available_qty ?? 0), 0),
       })
     }
+
+    // Surface the items that need restocking first: out of stock, then running
+    // low (< 10, matching the warehouse page), then in stock, then products
+    // with no warehouse stock at all. Alphabetical within each group.
+    const stockRank = (e) => {
+      const q = e.available
+      if (q === 0) return 0
+      if (q != null && q < 10) return 1
+      if (q != null) return 2
+      return 3
+    }
+    list.sort((a, b) => stockRank(a) - stockRank(b) || normName(a.name).localeCompare(normName(b.name)))
     return list
   }, [catalogueItems, inventory])
 
