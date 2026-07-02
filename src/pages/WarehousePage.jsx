@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabase'
 import {
   Package, TruckIcon, X, AlertTriangle, Activity, Plus, MapPin, Zap, Clock,
   ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight, Download,
+  RefreshCw, XCircle, CheckCircle2,
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
+import RestockModal from '../components/RestockModal'
 import { toCsv, downloadCsv, csvDate, csvEur, fileSlug } from '../lib/csv'
 
 const LOW_STOCK_THRESHOLD = 10
@@ -37,12 +39,18 @@ function fullAddress(a) {
 }
 
 // --- Inventory card with incoming ETA ---
-function InventoryCard({ item, incomingEta, onClick }) {
+function InventoryCard({ item, incomingEta, onClick, onRestock }) {
   const available = item.available_qty ?? 0
   const tone = available === 0 ? 'red' : available < LOW_STOCK_THRESHOLD ? 'amber' : 'gray'
   const toneClasses = { red: 'text-red-600', amber: 'text-amber-600', gray: 'text-gray-900' }
   return (
-    <button onClick={onClick} className="bg-white rounded-xl border border-gray-200 overflow-hidden text-left hover:border-blue-300 hover:shadow-sm transition-all">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+      className="bg-white rounded-xl border border-gray-200 overflow-hidden text-left hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
+    >
       <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
         {item.product_photo_url ? (
           <img src={item.product_photo_url} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
@@ -70,13 +78,26 @@ function InventoryCard({ item, incomingEta, onClick }) {
             </div>
           )}
         </div>
+        {onRestock && tone !== 'gray' && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRestock(item) }}
+            className={`mt-2 w-full inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              tone === 'red'
+                ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+            }`}
+          >
+            <RefreshCw size={11} />Restock
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   )
 }
 
 // --- Inventory detail (enriched: destination + requester on movements) ---
-function InventoryDetail({ item, ordersById, addressesById, requestByOrderId, onClose }) {
+function InventoryDetail({ item, ordersById, addressesById, requestByOrderId, onClose, onRestock }) {
   const [movements, setMovements] = useState([])
   useEffect(() => {
     supabase.from('warehouse_movements_client')
@@ -95,7 +116,18 @@ function InventoryDetail({ item, ordersById, addressesById, requestByOrderId, on
             <div className="text-xs text-gray-500">{item.sku || 'Inventory'}</div>
             <h2 className="text-lg font-semibold text-gray-900">{item.product_name}</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          <div className="flex items-center gap-2">
+            {onRestock && (
+              <button
+                type="button"
+                onClick={() => onRestock(item)}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg"
+              >
+                <RefreshCw size={13} />Restock
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          </div>
         </div>
         <div className="p-6 space-y-5">
           {item.product_photo_url && (
@@ -373,7 +405,7 @@ function FiltersBar({ products, productId, onProductChange, dateFrom, dateTo, on
 }
 
 // --- Main page ---
-export default function WarehousePage({ company, contact }) {
+export default function WarehousePage({ company, contact, onStartProposalWithItems }) {
   const [tab, setTab] = useState('inventory')
   const [inventory, setInventory] = useState([])
   const [orders, setOrders] = useState([])
@@ -388,6 +420,7 @@ export default function WarehousePage({ company, contact }) {
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [selectedShipment, setSelectedShipment] = useState(null)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [restockFor, setRestockFor] = useState(null) // array of inventory ids to preselect in the restock modal
   const [refresh, setRefresh] = useState(0)
 
   // Filters (apply to movements + shipments tabs)
@@ -485,8 +518,13 @@ export default function WarehousePage({ company, contact }) {
 
   if (loading) return <Spinner />
 
-  const lowStock = inventory.filter((i) => (i.available_qty ?? 0) < LOW_STOCK_THRESHOLD)
+  // Stock buckets for the inventory overview (out of stock / running low / in stock)
+  const outOfStock = inventory.filter((i) => (i.available_qty ?? 0) === 0)
+  const runningLow = inventory.filter((i) => (i.available_qty ?? 0) > 0 && (i.available_qty ?? 0) < LOW_STOCK_THRESHOLD)
+  const inStock = inventory.filter((i) => (i.available_qty ?? 0) >= LOW_STOCK_THRESHOLD)
   const invById = Object.fromEntries(inventory.map((i) => [i.id, i]))
+  const canRestock = !!onStartProposalWithItems
+  const openRestock = (invItems) => setRestockFor(invItems.map((i) => i.id))
   const pendingRequests = requests.filter((r) => r.status === 'pending').length
 
   // Derive "request by order" heuristically: none available — so just an empty map (kept for extensibility)
@@ -600,23 +638,65 @@ export default function WarehousePage({ company, contact }) {
         title="Warehouse"
         subtitle="Your stock, shipments and requests."
         action={
-          <PrimaryButton onClick={() => setWizardOpen(true)}>
-            <Plus size={16} />Request shipment
-          </PrimaryButton>
+          <div className="flex items-center gap-2">
+            {canRestock && inventory.length > 0 && (
+              <SecondaryButton onClick={() => openRestock([...outOfStock, ...runningLow])}>
+                <RefreshCw size={14} />Restock
+              </SecondaryButton>
+            )}
+            <PrimaryButton onClick={() => setWizardOpen(true)}>
+              <Plus size={16} />Request shipment
+            </PrimaryButton>
+          </div>
         }
       />
 
-      {lowStock.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <div className="text-sm font-semibold text-amber-900">
-              {lowStock.length} {lowStock.length === 1 ? 'item' : 'items'} running low
+      {(runningLow.length > 0 || outOfStock.length > 0) && (
+        <div className="space-y-2">
+          {runningLow.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-amber-900">
+                  {runningLow.length} {runningLow.length === 1 ? 'item' : 'items'} running low
+                </div>
+                <div className="text-xs text-amber-700 mt-0.5 truncate">
+                  {runningLow.slice(0, 3).map((i) => i.product_name).join(', ')}{runningLow.length > 3 ? ` and ${runningLow.length - 3} more` : ''}
+                </div>
+              </div>
+              {canRestock && (
+                <button
+                  type="button"
+                  onClick={() => openRestock(runningLow)}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700"
+                >
+                  <RefreshCw size={12} />Restock
+                </button>
+              )}
             </div>
-            <div className="text-xs text-amber-700 mt-0.5 truncate">
-              {lowStock.slice(0, 3).map((i) => i.product_name).join(', ')}{lowStock.length > 3 ? ` and ${lowStock.length - 3} more` : ''}
+          )}
+          {outOfStock.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+              <XCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-red-900">
+                  {outOfStock.length} {outOfStock.length === 1 ? 'item' : 'items'} out of stock
+                </div>
+                <div className="text-xs text-red-700 mt-0.5 truncate">
+                  {outOfStock.slice(0, 3).map((i) => i.product_name).join(', ')}{outOfStock.length > 3 ? ` and ${outOfStock.length - 3} more` : ''}
+                </div>
+              </div>
+              {canRestock && (
+                <button
+                  type="button"
+                  onClick={() => openRestock(outOfStock)}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700"
+                >
+                  <RefreshCw size={12} />Restock
+                </button>
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -644,14 +724,35 @@ export default function WarehousePage({ company, contact }) {
         inventory.length === 0 ? (
           <EmptyState icon={Package} title="No inventory" description="Stock will appear here once items are received." />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500">Current stock — {inventory.length} item{inventory.length === 1 ? '' : 's'}</span>
               <ExportCsvButton filename={`${slug}-inventory-${today}.csv`} columns={inventoryCsvColumns} rows={inventory} />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {inventory.map((i) => <InventoryCard key={i.id} item={i} incomingEta={incomingEtaByInv[i.id]} onClick={() => setSelectedInv(i)} />)}
-            </div>
+            {[
+              { id: 'out', label: 'Out of stock', icon: XCircle, iconClass: 'text-red-500', items: outOfStock },
+              { id: 'low', label: 'Running low', icon: AlertTriangle, iconClass: 'text-amber-500', items: runningLow },
+              { id: 'ok', label: 'In stock', icon: CheckCircle2, iconClass: 'text-green-500', items: inStock },
+            ].filter((s) => s.items.length > 0).map((s) => (
+              <div key={s.id}>
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 mb-4">
+                  <s.icon size={14} className={s.iconClass} />
+                  <span className="text-sm font-semibold text-gray-900">{s.label}</span>
+                  <span className="text-xs text-gray-400">({s.items.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {s.items.map((i) => (
+                    <InventoryCard
+                      key={i.id}
+                      item={i}
+                      incomingEta={incomingEtaByInv[i.id]}
+                      onClick={() => setSelectedInv(i)}
+                      onRestock={canRestock ? (item) => openRestock([item]) : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )
       )}
@@ -844,6 +945,7 @@ export default function WarehousePage({ company, contact }) {
           addressesById={addressesById}
           requestByOrderId={requestByOrderId}
           onClose={() => setSelectedInv(null)}
+          onRestock={canRestock ? (item) => { setSelectedInv(null); openRestock([item]) } : undefined}
         />
       )}
       {selectedRequest && (
@@ -868,6 +970,18 @@ export default function WarehousePage({ company, contact }) {
           contact={contact}
           onClose={() => setWizardOpen(false)}
           onCreated={() => { setTab('requests'); setRefresh((r) => r + 1) }}
+        />
+      )}
+      {restockFor && (
+        <RestockModal
+          company={company}
+          inventory={inventory}
+          preselectedInvIds={restockFor}
+          onClose={() => setRestockFor(null)}
+          onStart={(items, formPatch) => {
+            setRestockFor(null)
+            onStartProposalWithItems?.(items, formPatch)
+          }}
         />
       )}
     </div>
