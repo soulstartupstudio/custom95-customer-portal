@@ -40,6 +40,7 @@ export default function Layout({ session, contact, company }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
+  const [wizardPrefillMulti, setWizardPrefillMulti] = useState(null) // { items, form } — e.g. warehouse restock
   const [wizardResume, setWizardResume] = useState(null)   // draft snapshot to resume from
   const [draft, setDraft] = useState(null)                 // in-progress proposal draft
   const [refreshKey, setRefreshKey] = useState(0)
@@ -80,9 +81,10 @@ export default function Layout({ session, contact, company }) {
 
   const visibleTabs = tabs.filter((t) => !t.requiresBrandshop || company?.brandshop_addon)
 
-  const openWizard = () => { setWizardPrefill(null); setWizardResume(null); setWizardOpen(true) }
-  const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardResume(null); setWizardOpen(true) }
-  const resumeWizardFromDraft = () => { setWizardPrefill(null); setWizardResume(draft); setWizardOpen(true) }
+  const openWizard = () => { setWizardPrefill(null); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
+  const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
+  const openWizardWithItems = (items, form) => { setWizardPrefill(null); setWizardPrefillMulti({ items, form }); setWizardResume(null); setWizardOpen(true) }
+  const resumeWizardFromDraft = () => { setWizardPrefill(null); setWizardPrefillMulti(null); setWizardResume(draft); setWizardOpen(true) }
   const discardDraft = () => { clearProposalDraft(company?.id); setDraft(null) }
 
   const navigateTo = (tab, id) => {
@@ -102,7 +104,7 @@ export default function Layout({ session, contact, company }) {
       case 'invoices': return <InvoicesPage company={company} contact={contact} />
       case 'brand': return <BrandPage company={company} contact={contact} />
       case 'brandshop': return <BrandshopPage company={company} contact={contact} />
-      case 'warehouse': return <WarehousePage company={company} contact={contact} />
+      case 'warehouse': return <WarehousePage company={company} contact={contact} onStartProposalWithItems={openWizardWithItems} />
       case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} />
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
@@ -233,10 +235,13 @@ export default function Layout({ session, contact, company }) {
           company={company}
           contact={contact}
           prefillItem={wizardPrefill}
+          prefillItems={wizardPrefillMulti?.items}
+          prefillForm={wizardPrefillMulti?.form}
           resumeDraft={wizardResume}
           onClose={() => {
             setWizardOpen(false)
             setWizardPrefill(null)
+            setWizardPrefillMulti(null)
             setWizardResume(null)
             // The wizard saves on every change, so re-read whatever it left behind
             if (company?.id) setDraft(readProposalDraft(company.id))
@@ -245,6 +250,7 @@ export default function Layout({ session, contact, company }) {
             setRefreshKey((k) => k + 1)
             setActiveTab('proposals')
             setWizardPrefill(null)
+            setWizardPrefillMulti(null)
             setWizardResume(null)
             setDraft(null)
           }}

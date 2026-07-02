@@ -842,13 +842,16 @@ function TeamPicker({ company, contact, selectedIds, onChange }) {
 }
 
 // --- MAIN WIZARD ---
-export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem, resumeDraft }) {
-  const [step, setStep] = useState(resumeDraft?.step ?? 0)
+export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem, prefillItems, prefillForm, resumeDraft }) {
+  // With a multi-item prefill (e.g. warehouse restock) the basics are pre-filled,
+  // so land straight on the Items step: set quantities, see prices, add more.
+  const [step, setStep] = useState(resumeDraft?.step ?? (prefillItems?.length ? 1 : 0))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [itemMode, setItemMode] = useState('catalogue')
   const [items, setItems] = useState(() => {
     if (resumeDraft?.items) return resumeDraft.items
+    if (prefillItems?.length) return prefillItems
     if (!prefillItem) return []
     const item = prefillItem.catalogue_item
     return [{
@@ -891,6 +894,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     recipient_contact_name: '',
     recipient_contact_phone: '',
     recipient_contact_email: '',
+    ...(prefillForm || {}),
   })
 
   // Loyalty / merch credit the customer can apply to this proposal. We only
