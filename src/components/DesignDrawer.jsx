@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { StatusBadge, formatDate, PrimaryButton, SecondaryButton, Badge } from './ui'
 import DesignAttachments from './DesignAttachments'
+import ProductionConfirmModal from './ProductionConfirmModal'
 import { signDesignFileUrl } from '../lib/designThumbnails'
 
 export default function DesignDrawer({ design, company, contact, onClose, onUpdated }) {
@@ -18,6 +19,7 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
   const [submittingBrief, setSubmittingBrief] = useState(false)
   const [hero, setHero] = useState(null)
   const [heroIsMockup, setHeroIsMockup] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [lightbox, setLightbox] = useState(null)
 
   const contactName = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ')
@@ -97,7 +99,10 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
     }).eq('id', design.id)
     setBusy(false)
     if (err) { setError(err.message); return }
-    onUpdated?.(); onClose()
+    // Design approved → confirm payment terms and greenlight production. Fall
+    // through to close if there's no proposal to confirm against.
+    if (design.proposal_id) setConfirmOpen(true)
+    else { onUpdated?.(); onClose() }
   }
 
   const requestRevision = async (strong = false) => {
@@ -408,6 +413,15 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
           <X size={20} />
         </button>
       </div>
+    )}
+
+    {confirmOpen && (
+      <ProductionConfirmModal
+        proposalId={design.proposal_id}
+        company={company}
+        contact={contact}
+        onClose={() => { setConfirmOpen(false); onUpdated?.(); onClose() }}
+      />
     )}
     </>
   )

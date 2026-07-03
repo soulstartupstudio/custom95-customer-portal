@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Download, X, Check, ThumbsDown, AlertCircle, Clock } from 'lucide-react'
 import { StatusBadge, formatCents, formatDate, PrimaryButton, SecondaryButton, Badge, deriveQuoteBreakdown } from './ui'
+import DesignBriefModal from './DesignBriefModal'
 
 const PIPELINE = [
   { id: 'draft', label: 'Finalising quote' },
@@ -59,6 +60,7 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState(null)
+  const [briefOpen, setBriefOpen] = useState(false)
 
   useEffect(() => {
     supabase
@@ -91,7 +93,10 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
     }
     setBusy(false)
     if (err) { setError(err.message); return }
-    onUpdated?.(); onClose()
+    // Quote accepted → immediately capture the design brief. Fall through to close
+    // if there's somehow no proposal to brief against.
+    if (quote.proposal_id) setBriefOpen(true)
+    else { onUpdated?.(); onClose() }
   }
 
   const decline = async () => {
@@ -111,6 +116,7 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 bg-black/30 flex justify-end" onClick={onClose}>
       <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -278,5 +284,14 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
         </div>
       </div>
     </div>
+    {briefOpen && (
+      <DesignBriefModal
+        proposalId={quote.proposal_id}
+        company={company}
+        contact={contact}
+        onClose={() => { setBriefOpen(false); onUpdated?.(); onClose() }}
+      />
+    )}
+    </>
   )
 }
