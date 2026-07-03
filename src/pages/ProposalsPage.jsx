@@ -87,7 +87,7 @@ function DeleteItemButton({ item, onDeleted }) {
 // Proposal flow ends when a project is created. Later stages live in the Projects tab.
 const JOURNEY = [
   { id: 'inquiry_received', label: 'Inquiry', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "We've got it — starting discovery" },
-  { id: 'discovery', label: 'Discovery', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "Working on designs + quote" },
+  { id: 'discovery', label: 'Quote awaiting approval', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "Review and approve your quote to move ahead" },
   { id: 'quote_approved', label: 'Quote approved', tone: 'bg-purple-50 border-purple-200', dot: 'bg-purple-500', hint: "Price accepted — preparing next steps" },
   { id: 'pending_designs', label: 'Finalising designs', tone: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500', hint: "Locking in design direction" },
   { id: 'project', label: 'Now a project', tone: 'bg-green-50 border-green-200', dot: 'bg-green-500', hint: "Live project — click to open", terminal: true },
