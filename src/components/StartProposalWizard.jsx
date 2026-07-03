@@ -843,6 +843,48 @@ function TeamPicker({ company, contact, selectedIds, onChange }) {
   )
 }
 
+// --- RECIPIENT CONTACT PICKER ---
+// Warehouse shipments need a recipient contact. Rather than retype someone the
+// company already has on file, let them pick a saved contact (which fills the
+// name/phone/email fields); the fields stay editable for anything missing or new.
+function RecipientContactPicker({ company, selectedId, onPick }) {
+  const [contacts, setContacts] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('contacts')
+      .select('id, first_name, last_name, role, email, phone')
+      .eq('company_id', company.id)
+      .order('first_name', { nullsFirst: false })
+      .then(({ data }) => { if (!cancelled) { setContacts(data ?? []); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [company.id])
+
+  if (loading) return <div className="text-xs text-gray-400 py-1">Loading contacts…</div>
+  if (contacts.length === 0) return null
+
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-600 mb-1">Use a saved contact</label>
+      <select
+        value={selectedId || ''}
+        onChange={(e) => onPick(contacts.find((c) => c.id === e.target.value) || null)}
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">Select a person…</option>
+        {contacts.map((c) => {
+          const nm = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'Unnamed contact'
+          const missing = (!c.phone || !c.email) ? ' — needs phone/email' : ''
+          return <option key={c.id} value={c.id}>{nm}{c.role ? ` · ${c.role}` : ''}{missing}</option>
+        })}
+      </select>
+      <p className="text-[10px] text-gray-500 mt-1">Or fill in the details below.</p>
+    </div>
+  )
+}
+
 // --- MAIN WIZARD ---
 export default function StartProposalWizard({ company, contact, onClose, onCreated, prefillItem, prefillItems, prefillForm, resumeDraft }) {
   // With a multi-item prefill (e.g. warehouse restock) the basics are pre-filled,
@@ -893,11 +935,15 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     shipment_type: 'one_address',
     delivery_notes: '',
     // Warehouse-shipment recipient contact (proposals.recipient_contact_*)
+    recipient_contact_id: '', // local-only: which saved contact is selected (not persisted)
     recipient_contact_name: '',
     recipient_contact_phone: '',
     recipient_contact_email: '',
     ...(prefillForm || {}),
   })
+
+  // Editing a recipient field by hand detaches it from the saved contact.
+  const editRecipient = (k, v) => setForm((f) => ({ ...f, [k]: v, recipient_contact_id: '' }))
 
   // Loyalty / merch credit the customer can apply to this proposal. We only
   // record the *requested* amount on the proposal (portal can't spend the
@@ -1313,10 +1359,24 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                   <p className="text-[11px] text-gray-600">
                     Stock will land at our warehouse — the team needs a contact for when it's later shipped out to you.
                   </p>
+                  <RecipientContactPicker
+                    company={company}
+                    selectedId={form.recipient_contact_id}
+                    onPick={(c) => {
+                      if (!c) { update('recipient_contact_id', ''); return }
+                      setForm((f) => ({
+                        ...f,
+                        recipient_contact_id: c.id,
+                        recipient_contact_name: [c.first_name, c.last_name].filter(Boolean).join(' ') || f.recipient_contact_name,
+                        recipient_contact_phone: c.phone || '',
+                        recipient_contact_email: c.email || '',
+                      }))
+                    }}
+                  />
                   <input
                     type="text"
                     value={form.recipient_contact_name}
-                    onChange={(e) => update('recipient_contact_name', e.target.value)}
+                    onChange={(e) => editRecipient('recipient_contact_name', e.target.value)}
                     placeholder="Contact name *"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   />
@@ -1324,14 +1384,14 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                     <input
                       type="tel"
                       value={form.recipient_contact_phone}
-                      onChange={(e) => update('recipient_contact_phone', e.target.value)}
+                      onChange={(e) => editRecipient('recipient_contact_phone', e.target.value)}
                       placeholder="Phone *"
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                     <input
                       type="email"
                       value={form.recipient_contact_email}
-                      onChange={(e) => update('recipient_contact_email', e.target.value)}
+                      onChange={(e) => editRecipient('recipient_contact_email', e.target.value)}
                       placeholder="Email *"
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     />
