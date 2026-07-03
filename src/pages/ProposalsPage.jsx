@@ -95,6 +95,17 @@ const JOURNEY = [
 
 const DEAD_STATUSES = ['denied', 'not_proceeding', 'on_hold', 'completed']
 
+// Map a proposal status to the journey stage it should sit in. A proposal only
+// advances past Discovery once its quote is accepted (quote_approved), so any
+// status the portal doesn't explicitly model — e.g. a quote that's been sent but
+// not yet accepted — holds at Discovery rather than vanishing or snapping back to
+// Inquiry. Dead statuses keep the initial stage (they render their own banner).
+function resolveStageId(status) {
+  if (JOURNEY.some((s) => s.id === status)) return status
+  if (DEAD_STATUSES.includes(status)) return 'inquiry_received'
+  return 'discovery'
+}
+
 function ProposalCard({ proposal, onClick, compact = false, linkedProject }) {
   const age = proposal.created_at ? Math.floor((Date.now() - new Date(proposal.created_at).getTime()) / (1000 * 60 * 60 * 24)) : null
   const isProject = proposal.status === 'project' && !!linkedProject
@@ -136,7 +147,7 @@ function Kanban({ proposals, projectsByProposalId, onOpen }) {
     const map = Object.fromEntries(JOURNEY.map((j) => [j.id, []]))
     for (const p of proposals) {
       if (DEAD_STATUSES.includes(p.status)) continue
-      if (map[p.status]) map[p.status].push(p)
+      map[resolveStageId(p.status)].push(p)
     }
     return map
   }, [proposals])
@@ -338,7 +349,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
     return map
   }, [designs, items, teamOnlyItems])
 
-  const stage = JOURNEY.find((s) => s.id === proposal.status) || JOURNEY[0]
+  const stage = JOURNEY.find((s) => s.id === resolveStageId(proposal.status)) || JOURNEY[0]
   const leadContact = team.find((t) => t.role === 'lead')?.contacts
 
   // Rolling delivery ETA — gated by the slowest item (sourcing + production).
@@ -380,7 +391,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
             <p className="text-[11px] text-gray-700">{stage.hint}</p>
             <div className="grid grid-cols-5 gap-1 mt-3">
               {JOURNEY.map((s, i) => {
-                const active = JOURNEY.findIndex((x) => x.id === proposal.status) >= i
+                const active = JOURNEY.findIndex((x) => x.id === resolveStageId(proposal.status)) >= i
                 return (
                   <div key={s.id} className={`h-1 rounded-full ${active ? s.dot : 'bg-gray-200'}`} />
                 )
