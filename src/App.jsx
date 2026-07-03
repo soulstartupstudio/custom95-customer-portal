@@ -106,7 +106,7 @@ export default function App() {
 
       const { data: co, error: coErr } = await supabase
         .from('companies')
-        .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier')
+        .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier, am_user_id')
         .eq('id', row.company_id)
         .single()
       if (cancelled) return

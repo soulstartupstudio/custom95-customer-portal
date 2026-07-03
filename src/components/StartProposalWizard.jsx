@@ -1094,6 +1094,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       shipment_type: form.shipment_type,
       delivery_notes: form.delivery_notes.trim() || null,
       created_by_client: true,
+      // Assign to the company's account manager so it lands in their pipeline in
+      // the team app instead of a general/unowned queue. Null if none yet.
+      owner_user_id: company.am_user_id || null,
       // Loyalty/merch credit the customer asked to apply — the team seeds the
       // quote's credit from this (spending happens at quote time).
       requested_merch_credit_cents: creditApplied > 0 ? creditApplied : null,
@@ -1110,7 +1113,14 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       proposalPatch.recipient_contact_email = form.recipient_contact_email.trim() || null
     }
 
-    const { data: proposal, error: propErr } = await supabase.from('proposals').insert(proposalPatch).select('id').single()
+    let { data: proposal, error: propErr } = await supabase.from('proposals').insert(proposalPatch).select('id').single()
+    // If assigning the account manager was rejected (e.g. RLS restricts writing
+    // owner_user_id from the portal), retry without it so proposal creation never
+    // breaks. A DB trigger from companies.am_user_id is the robust fix.
+    if (propErr && proposalPatch.owner_user_id) {
+      const { owner_user_id, ...withoutOwner } = proposalPatch
+      ;({ data: proposal, error: propErr } = await supabase.from('proposals').insert(withoutOwner).select('id').single())
+    }
     if (propErr) { setSubmitting(false); setError(propErr.message); return }
 
     // Items (trigger handles design_task spawning)
