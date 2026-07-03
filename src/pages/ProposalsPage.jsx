@@ -86,11 +86,11 @@ function DeleteItemButton({ item, onDeleted }) {
 
 // Proposal flow ends when a project is created. Later stages live in the Projects tab.
 const JOURNEY = [
-  { id: 'inquiry_received', label: 'Inquiry', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "We've got it — starting discovery" },
-  { id: 'discovery', label: 'Quote awaiting approval', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "Review and approve your quote to move ahead" },
-  { id: 'quote_approved', label: 'Quote approved', tone: 'bg-purple-50 border-purple-200', dot: 'bg-purple-500', hint: "Price accepted — preparing next steps" },
-  { id: 'pending_designs', label: 'Finalising designs', tone: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500', hint: "Locking in design direction" },
-  { id: 'project', label: 'Now a project', tone: 'bg-green-50 border-green-200', dot: 'bg-green-500', hint: "Live project — click to open", terminal: true },
+  { id: 'inquiry_received', label: 'Inquiry', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "We've got your inquiry — preparing your quote" },
+  { id: 'discovery', label: 'Quotation', tone: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', hint: "Your quote is ready for approval" },
+  { id: 'quote_approved', label: 'Design pending', tone: 'bg-purple-50 border-purple-200', dot: 'bg-purple-500', hint: "Your design is being created by our Creatives" },
+  { id: 'pending_designs', label: 'Design approval', tone: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500', hint: "Your design is ready for approval" },
+  { id: 'project', label: 'Project 🎉', tone: 'bg-green-50 border-green-200', dot: 'bg-green-500', hint: "Your project is now in production! Track it in the Projects tab", terminal: true },
 ]
 
 const DEAD_STATUSES = ['denied', 'not_proceeding', 'on_hold', 'completed']
