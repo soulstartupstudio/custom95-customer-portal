@@ -114,16 +114,24 @@ function deriveStageId(proposal, { quotes = [], designs = [], linkedProject = nu
   const status = proposal?.status
   // 5. Project — a real project exists, production is confirmed, or status says so.
   if (status === 'project' || linkedProject || proposal?.production_confirmed_at) return 'project'
-  // 3–4. Design phases live on design_tasks, not the proposal status.
+
   const active = designs.filter((d) => d && d.status && d.status !== 'cancelled')
+  const quoteAccepted = quotes.some((q) => q.status === 'accepted') || status === 'quote_approved'
+
+  // 3–4. Design phases live on design_tasks, not the proposal status.
   if (active.length) {
-    // Any design ready for approval or already approved → "Design approval" (4).
-    if (active.some((d) => d.status === 'submitted' || d.status === 'approved')) return 'pending_designs'
+    // A design is genuinely waiting for the customer to approve → "Design approval" (4).
+    if (active.some((d) => d.status === 'submitted')) return 'pending_designs'
+    // Every design is approved → the creative phase is done, heading to production (5).
+    // (Guarded by an accepted quote so an auto-approved restock design can't jump
+    // ahead of the quote.)
+    if (quoteAccepted && active.every((d) => d.status === 'approved')) return 'project'
     // Otherwise designs are still being created → "Design pending" (3).
-    return 'quote_approved'
+    if (quoteAccepted) return 'quote_approved'
   }
+
   // 3. Quote accepted but no design signal yet → design pending.
-  if (quotes.some((q) => q.status === 'accepted') || status === 'quote_approved') return 'quote_approved'
+  if (quoteAccepted) return 'quote_approved'
   // 2. Quote sent, awaiting approval.
   if (quotes.some((q) => q.status === 'sent') || status === 'discovery') return 'discovery'
   // 1. Inquiry / unknowns.
