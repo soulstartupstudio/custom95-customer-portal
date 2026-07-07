@@ -106,6 +106,30 @@ function resolveStageId(status) {
   return 'discovery'
 }
 
+// Work out the journey stage from everything we know — not just proposals.status.
+// The team app advances design work on design_tasks (and we record production
+// confirmation on the proposal), so a proposal sitting at status 'quote_approved'
+// can actually be further along. Precedence: project → design state → quote → status.
+function deriveStageId(proposal, { quotes = [], designs = [], linkedProject = null } = {}) {
+  const status = proposal?.status
+  // 5. Project — a real project exists, production is confirmed, or status says so.
+  if (status === 'project' || linkedProject || proposal?.production_confirmed_at) return 'project'
+  // 3–4. Design phases live on design_tasks, not the proposal status.
+  const active = designs.filter((d) => d && d.status && d.status !== 'cancelled')
+  if (active.length) {
+    // Any design ready for approval or already approved → "Design approval" (4).
+    if (active.some((d) => d.status === 'submitted' || d.status === 'approved')) return 'pending_designs'
+    // Otherwise designs are still being created → "Design pending" (3).
+    return 'quote_approved'
+  }
+  // 3. Quote accepted but no design signal yet → design pending.
+  if (quotes.some((q) => q.status === 'accepted') || status === 'quote_approved') return 'quote_approved'
+  // 2. Quote sent, awaiting approval.
+  if (quotes.some((q) => q.status === 'sent') || status === 'discovery') return 'discovery'
+  // 1. Inquiry / unknowns.
+  return resolveStageId(status)
+}
+
 function ProposalCard({ proposal, onClick, compact = false, linkedProject }) {
   const age = proposal.created_at ? Math.floor((Date.now() - new Date(proposal.created_at).getTime()) / (1000 * 60 * 60 * 24)) : null
   const isProject = proposal.status === 'project' && !!linkedProject
@@ -142,15 +166,20 @@ function ProposalCard({ proposal, onClick, compact = false, linkedProject }) {
   )
 }
 
-function Kanban({ proposals, projectsByProposalId, onOpen }) {
+function Kanban({ proposals, projectsByProposalId, designsByProposalId, quotesByProposalId, onOpen }) {
   const byStage = useMemo(() => {
     const map = Object.fromEntries(JOURNEY.map((j) => [j.id, []]))
     for (const p of proposals) {
       if (DEAD_STATUSES.includes(p.status)) continue
-      map[resolveStageId(p.status)].push(p)
+      const stageId = deriveStageId(p, {
+        designs: designsByProposalId[p.id] || [],
+        quotes: quotesByProposalId[p.id] || [],
+        linkedProject: projectsByProposalId[p.id] || null,
+      })
+      map[stageId].push(p)
     }
     return map
-  }, [proposals])
+  }, [proposals, designsByProposalId, quotesByProposalId, projectsByProposalId])
 
   return (
     <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2">
@@ -349,7 +378,8 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
     return map
   }, [designs, items, teamOnlyItems])
 
-  const stage = JOURNEY.find((s) => s.id === resolveStageId(proposal.status)) || JOURNEY[0]
+  const effectiveStageId = deriveStageId(proposal, { quotes, designs })
+  const stage = JOURNEY.find((s) => s.id === effectiveStageId) || JOURNEY[0]
   const leadContact = team.find((t) => t.role === 'lead')?.contacts
 
   // Rolling delivery ETA — gated by the slowest item (sourcing + production).
@@ -391,7 +421,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
             <p className="text-[11px] text-gray-700">{stage.hint}</p>
             <div className="grid grid-cols-5 gap-1 mt-3">
               {JOURNEY.map((s, i) => {
-                const active = JOURNEY.findIndex((x) => x.id === resolveStageId(proposal.status)) >= i
+                const active = JOURNEY.findIndex((x) => x.id === effectiveStageId) >= i
                 return (
                   <div key={s.id} className={`h-1 rounded-full ${active ? s.dot : 'bg-gray-200'}`} />
                 )
@@ -838,6 +868,8 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
 export default function ProposalsPage({ company, contact, onStartProposal, onOpenProject }) {
   const [rows, setRows] = useState([])
   const [projectsByProposalId, setProjectsByProposalId] = useState({})
+  const [designsByProposalId, setDesignsByProposalId] = useState({})
+  const [quotesByProposalId, setQuotesByProposalId] = useState({})
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   // Default to list view on small screens (Kanban is unusable < ~640px)
@@ -850,18 +882,36 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
       setLoading(true)
       const [propRes, projRes] = await Promise.all([
         supabase.from('proposals')
-          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, lead_days, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
+          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, lead_days, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, production_confirmed_at, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
           .eq('company_id', company.id)
           .order('created_at', { ascending: false }),
         supabase.from('projects').select('id, project_number, name, stage, proposal_id').eq('company_id', company.id),
       ])
       if (cancelled) return
-      setRows(propRes.data ?? [])
+      const proposals = propRes.data ?? []
+      setRows(proposals)
       const byPropId = {}
       for (const p of projRes.data ?? []) {
         if (p.proposal_id) byPropId[p.proposal_id] = p
       }
       setProjectsByProposalId(byPropId)
+
+      // The team app tracks design progress on design_tasks (not proposals.status),
+      // so we derive the journey stage from the proposal's designs + quotes too.
+      const propIds = proposals.map((p) => p.id)
+      if (propIds.length) {
+        const [dRes, qRes] = await Promise.all([
+          supabase.from('design_tasks').select('proposal_id, status').in('proposal_id', propIds),
+          supabase.from('quotes').select('proposal_id, status').in('proposal_id', propIds),
+        ])
+        if (!cancelled) {
+          const dByProp = {}, qByProp = {}
+          for (const d of dRes.data ?? []) { if (d.proposal_id) (dByProp[d.proposal_id] = dByProp[d.proposal_id] || []).push(d) }
+          for (const q of qRes.data ?? []) { if (q.proposal_id) (qByProp[q.proposal_id] = qByProp[q.proposal_id] || []).push(q) }
+          setDesignsByProposalId(dByProp)
+          setQuotesByProposalId(qByProp)
+        }
+      }
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -913,7 +963,7 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
           </div>
 
           {view === 'kanban' ? (
-            <Kanban proposals={rows} projectsByProposalId={projectsByProposalId} onOpen={openProposalOrProject} />
+            <Kanban proposals={rows} projectsByProposalId={projectsByProposalId} designsByProposalId={designsByProposalId} quotesByProposalId={quotesByProposalId} onOpen={openProposalOrProject} />
           ) : (
             <Table
               columns={[
