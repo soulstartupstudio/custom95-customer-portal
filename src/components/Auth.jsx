@@ -61,7 +61,7 @@ export default function Auth() {
       }
       lastError = error
     }
-    if (lastError) setError('That code is incorrect or expired. Request a new one and try again.')
+    if (lastError) setError('That code is incorrect or has expired. Tap "Resend code", then enter the code from the newest email straight away — each new code cancels the previous one.')
     setLoading(false)
   }
 
@@ -86,11 +86,12 @@ export default function Auth() {
                 <h2 className="text-base font-semibold text-gray-900 mb-1">Check your email</h2>
                 <p className="text-sm text-gray-600">
                   We sent a sign-in code and link to <span className="font-medium">{email}</span>.
-                  Enter the 6-digit code below — this is the most reliable way to sign in.
+                  Enter the code from that email below — this is the most reliable way to sign in.
+                  Use the code from the <span className="font-medium">most recent</span> email; older codes stop working.
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">6-digit code</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sign-in code</label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -98,7 +99,7 @@ export default function Auth() {
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="123456"
+                  placeholder="Enter code"
                   autoFocus
                   required
                 />
