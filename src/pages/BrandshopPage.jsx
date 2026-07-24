@@ -7,8 +7,7 @@ import {
 import {
   PageHeader, EmptyState, Spinner, Badge, formatCents, formatDate, PrimaryButton, SecondaryButton,
 } from '../components/ui'
-import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
-import { hasPartnerPlan } from '../lib/planBenefits'
+import BrandshopUpsell from '../components/BrandshopUpsell'
 
 // ---------- Edge function helper ----------
 async function invokeShopify(body) {
@@ -1098,21 +1097,11 @@ export default function BrandshopPage({ company, contact }) {
 
   if (loading) return <Spinner />
 
-  const partner = hasPartnerPlan(company)
-
   if (shops.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Brandshop" subtitle="Your own white-label storefront." />
-        {partner ? (
-          <EmptyState
-            icon={Store}
-            title="No brandshops yet"
-            description="Reach out to your account manager to set up a white-label storefront."
-          />
-        ) : (
-          <PartnerPlanUpsell variant="full" feature="Brandshop" icon={Store} />
-        )}
+        <PageHeader title="Brandshop" subtitle="Your own branded merch store." />
+        <BrandshopUpsell />
       </div>
     )
   }
@@ -1121,7 +1110,6 @@ export default function BrandshopPage({ company, contact }) {
     return (
       <div className="space-y-6">
         <PageHeader title="Brandshops" subtitle="Pick a shop to manage." />
-        {!partner && <PartnerPlanUpsell variant="banner" feature="Brandshop" icon={Store} />}
         <ShopList shops={shops} onSelect={setSelected} />
       </div>
     )

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
+import { fetchMyCatalogueItems } from '../lib/myCatalogue'
 import { Lock } from 'lucide-react'
 import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
 import { itemLeadDays, orderLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
@@ -170,6 +171,70 @@ function CataloguePicker({ mode, company, onPick }) {
   )
 }
 
+// --- MY CATALOGUE PICKER (re-orders: all approved designs, custom + base) ---
+function MyCataloguePicker({ company, onPick }) {
+  const [items, setItems] = useState([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyCatalogueItems(company.id).then((arr) => { if (!cancelled) { setItems(arr); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [company.id])
+
+  const filtered = search
+    ? items.filter((i) => (i._design_title || i.name)?.toLowerCase().includes(search.toLowerCase()))
+    : items
+
+  if (loading) return <div className="text-sm text-gray-400 py-6 text-center">Loading your designs…</div>
+  if (items.length === 0) {
+    return (
+      <div className="text-sm text-gray-400 py-6 text-center border border-dashed border-gray-200 rounded-lg">
+        No approved designs yet — they appear here once a design is approved.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search your designs…"
+          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <div className="max-h-80 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1">
+        {filtered.slice(0, 50).map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onPick(item)}
+            className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-emerald-50 text-left"
+          >
+            <div className="w-12 h-12 rounded-md bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+              {item._design_image ? (
+                <img src={item._design_image} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
+              ) : (
+                <Package size={18} className="text-gray-300" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 truncate">{item._design_title || item.name}</div>
+              <div className="text-xs text-gray-500 truncate">{item._custom ? 'Custom design' : `On ${item.name}`}</div>
+            </div>
+            <div className="text-[10px] text-emerald-600 font-medium inline-flex items-center gap-1"><Star size={10} />Re-order</div>
+          </button>
+        ))}
+        {filtered.length === 0 && <div className="text-xs text-gray-400 p-6 text-center">No matches.</div>}
+      </div>
+    </div>
+  )
+}
+
 // --- CUSTOM ITEM FORM ---
 function CustomItemForm({ company, onAdd }) {
   const [name, setName] = useState('')
@@ -294,6 +359,26 @@ function CustomItemForm({ company, onAdd }) {
 
 // --- CART ROW with always-visible options ---
 function CartRow({ item: it, idx, onUpdate, onRemove }) {
+  // The "let our team suggest ideas" line has no quantity/price — it rides along
+  // as a text request that the team quotes (price TBD).
+  if (it.is_suggestion) {
+    return (
+      <tr className="border-t border-gray-100 bg-blue-50/40">
+        <td className="px-3 py-2" colSpan={4}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0"><Sparkles size={14} className="text-blue-600" /></div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900">Let our team suggest products &amp; ideas</div>
+              <div className="text-xs text-gray-500">We'll propose options for your brief and quote them · <span className="text-gray-400">Price TBD</span></div>
+            </div>
+          </div>
+        </td>
+        <td className="px-2 py-2">
+          <button onClick={() => onRemove(idx)} className="text-gray-400 hover:text-red-600"><Trash2 size={14} /></button>
+        </td>
+      </tr>
+    )
+  }
   const hasSizes = (it.available_sizes?.length ?? 0) > 0
   const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
   const selectedCustomizations = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
@@ -1025,6 +1110,58 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     ])
   }
 
+  // My-catalogue re-order: drop the approved design straight into the cart with
+  // no options to configure (base products keep volume pricing; custom = TBD).
+  const addFromMyCatalogue = async (mi) => {
+    if (mi._custom) {
+      setItems((arr) => [...arr, {
+        type: 'custom',
+        description: mi._design_title || mi.name,
+        quantity: null,
+        photo_url: mi._design_image || null,
+        reference_url: mi._design_image || null,
+        notes: `Re-order of approved design: ${mi._design_title || mi.name}`,
+        source_design_id: mi._design_id || null,
+        unit_price_cents: null,
+      }])
+      return
+    }
+    const { data: ccLink } = await supabase
+      .from('company_catalogue').select('id').eq('company_id', company.id).eq('catalogue_item_id', mi.id).maybeSingle()
+    const [globalRes, ccRes] = await Promise.all([
+      supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', mi.id).order('qty_from'),
+      ccLink?.id
+        ? supabase.from('company_catalogue_pricing_tiers').select('*').eq('company_catalogue_id', ccLink.id).order('qty_from')
+        : Promise.resolve({ data: [] }),
+    ])
+    const customT = ccRes.data ?? []
+    const globalT = (globalRes.data ?? []).filter((t) => !t.is_sample_tier)
+    const tiers = customT.length ? customT : globalT
+    const locked = mi._locked_spec || null
+    setItems((arr) => [...arr, {
+      type: 'catalogue',
+      catalogue_item_id: mi.id,
+      description: mi._design_title || mi.name,
+      category: mi.category,
+      photo_url: mi._design_image || mi.main_photo_url,
+      quantity: mi.moq_sales || 50,
+      reference_url: mi._design_image || null,
+      source_design_id: mi._design_id || null,
+      notes: `Re-order of approved design: ${mi._design_title || mi.name}`,
+      tiers,
+      _leadDays: itemLeadDays(mi),
+      colour_choice: locked?.colour_choice || null,
+      size_breakdown: locked?.size_breakdown || null,
+      pantone_code: locked?.pantone_code || null,
+      pantone_selected: !!locked?.pantone_code,
+      // Locked re-order — no option pickers in the cart.
+      available_colours: [],
+      available_sizes: [],
+      available_customizations: [],
+      customization_choice_ids: (locked?.customization_choices || []).map((c) => c.id).filter(Boolean),
+    }])
+  }
+
   const addCustom = (item) => setItems((arr) => [...arr, item])
   const updateItem = (idx, patch) => setItems((arr) => arr.map((it, i) => i === idx ? { ...it, ...patch } : it))
   const removeItem = (idx) => setItems((arr) => arr.filter((_, i) => i !== idx))
@@ -1068,8 +1205,25 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       return !!(a && a.contact_name && a.contact_phone && a.contact_email)
     })
   }
-  // Every item needs a quantity before we can price / move on.
-  const allItemsHaveQty = items.length > 0 && items.every((it) => (it.quantity ?? 0) > 0)
+  // Every item needs a quantity before we can price / move on — except the
+  // "let our team suggest ideas" line, which is intentionally open-ended.
+  const allItemsHaveQty = items.length > 0 && items.every((it) => it.is_suggestion || (it.quantity ?? 0) > 0)
+
+  const hasSuggestion = items.some((it) => it.is_suggestion)
+  const toggleSuggestion = () => setItems((arr) =>
+    arr.some((it) => it.is_suggestion)
+      ? arr.filter((it) => !it.is_suggestion)
+      : [...arr, {
+          type: 'custom',
+          is_suggestion: true,
+          description: 'Let our team suggest products & ideas',
+          quantity: null,
+          unit_price_cents: null,
+          reference_url: null,
+          notes: null,
+          photo_url: null,
+        }]
+  )
 
   const canAdvance = () => {
     if (step === 0) return !!form.name.trim() && !!form.occasion && (form.occasion !== 'Other' || form.occasion_other.trim()) && !!form.brief_notes.trim()
@@ -1285,6 +1439,30 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
 
           {step === 1 && (
             <div className="space-y-4">
+              {/* Let our team come up with ideas — selectable, becomes a quote line (price TBD) */}
+              <button
+                type="button"
+                onClick={toggleSuggestion}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-colors ${
+                  hasSuggestion ? 'border-emerald-500 bg-emerald-50' : 'border-dashed border-blue-300 bg-blue-50/40 hover:bg-blue-50'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${hasSuggestion ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white'}`}>
+                  {hasSuggestion ? <Check size={16} /> : <Sparkles size={16} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900">Not sure what you need? Let our team come up with ideas</div>
+                  <div className="text-xs text-gray-600">
+                    {hasSuggestion
+                      ? "Added to your request — we'll propose products for your brief and quote them."
+                      : "We'll suggest products tailored to your brief and quote them — no need to pick anything now."}
+                  </div>
+                </div>
+                <span className={`text-xs font-semibold whitespace-nowrap ${hasSuggestion ? 'text-emerald-700' : 'text-blue-700'}`}>
+                  {hasSuggestion ? 'Selected' : 'Select'}
+                </span>
+              </button>
+
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
                 {[
                   { id: 'catalogue', label: 'Catalogue' },
@@ -1303,18 +1481,13 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                 ))}
               </div>
               {itemMode === 'catalogue' && <CataloguePicker mode="all" company={company} onPick={addFromCatalogue} />}
-              {itemMode === 'mine' && <CataloguePicker mode="mine" company={company} onPick={addFromCatalogue} />}
+              {itemMode === 'mine' && <MyCataloguePicker company={company} onPick={addFromMyCatalogue} />}
               {itemMode === 'custom' && <CustomItemForm company={company} onAdd={addCustom} />}
               <div className="pt-2">
                 <div className="text-xs font-semibold text-gray-600 mb-2">
                   Cart {items.length > 0 && `· ${items.length} ${items.length === 1 ? 'item' : 'items'}`}
                 </div>
                 <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
-                {items.length === 0 && (
-                  <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
-                    <Sparkles size={12} className="text-blue-500" />Not sure what you need yet? You can skip this — we'll suggest products and quote them for you.
-                  </div>
-                )}
                 {items.length > 0 && !allItemsHaveQty && (
                   <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
                     <Package size={12} />Enter a quantity for every item to continue.
