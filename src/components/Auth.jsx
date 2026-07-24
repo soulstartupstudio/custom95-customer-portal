@@ -85,9 +85,8 @@ export default function Auth() {
               <div>
                 <h2 className="text-base font-semibold text-gray-900 mb-1">Check your email</h2>
                 <p className="text-sm text-gray-600">
-                  We sent a sign-in code and link to <span className="font-medium">{email}</span>.
-                  Enter the code from that email below — this is the most reliable way to sign in.
-                  Use the code from the <span className="font-medium">most recent</span> email; older codes stop working.
+                  We sent a sign-in code to <span className="font-medium">{email}</span>.
+                  Enter it below. Use the code from the <span className="font-medium">most recent</span> email — older codes stop working.
                 </p>
               </div>
               <div>
