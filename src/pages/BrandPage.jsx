@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Calendar as CalendarIcon, Image as ImageIcon, Plus, X, ChevronLeft, ChevronRight,
-  Trash2, Repeat, LayoutGrid, List as ListIcon,
+  Trash2, Repeat, LayoutGrid, List as ListIcon, BookOpen,
 } from 'lucide-react'
 import { PageHeader, Spinner, PrimaryButton, SecondaryButton, Badge, formatDate } from '../components/ui'
 import BrandAssetsSection from '../components/BrandAssetsSection'
+import MyCatalogue from '../components/MyCatalogue'
 
 const EVENT_TYPES = [
   { value: 'campaign', label: 'Campaign', tone: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -555,7 +556,7 @@ function BrandingTab({ company, contact }) {
   )
 }
 
-export default function BrandPage({ company, contact }) {
+export default function BrandPage({ company, contact, onStartProposalWithItems }) {
   const [tab, setTab] = useState('calendar')
   return (
     <div className="space-y-6">
@@ -564,6 +565,7 @@ export default function BrandPage({ company, contact }) {
         {[
           { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
           { id: 'branding', label: 'Branding', icon: ImageIcon },
+          { id: 'catalogue', label: 'My Catalogue', icon: BookOpen },
         ].map((t) => {
           const Icon = t.icon
           return (
@@ -581,6 +583,7 @@ export default function BrandPage({ company, contact }) {
       </div>
       {tab === 'calendar' && <CalendarTab company={company} contact={contact} />}
       {tab === 'branding' && <BrandingTab company={company} contact={contact} />}
+      {tab === 'catalogue' && <MyCatalogue company={company} contact={contact} onStartProposalWithItems={onStartProposalWithItems} />}
     </div>
   )
 }

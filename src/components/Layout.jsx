@@ -104,7 +104,7 @@ export default function Layout({ session, contact, company }) {
       case 'designs': return <DesignsPage key={refreshKey} company={company} contact={contact} deepLinkId={linkId('designs')} clearDeepLink={clearDeepLink} />
       case 'projects': return <ProjectsPage company={company} contact={contact} deepLinkId={linkId('projects')} deepLinkReview={deepLink?.tab === 'projects' ? deepLink?.review : null} clearDeepLink={clearDeepLink} />
       case 'invoices': return <InvoicesPage company={company} contact={contact} />
-      case 'brand': return <BrandPage company={company} contact={contact} />
+      case 'brand': return <BrandPage company={company} contact={contact} onStartProposalWithItems={openWizardWithItems} />
       case 'brandshop': return <BrandshopPage company={company} contact={contact} />
       case 'warehouse': return <WarehousePage company={company} contact={contact} onStartProposalWithItems={openWizardWithItems} />
       case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} onStartProposalWithItems={openWizardWithItems} />
