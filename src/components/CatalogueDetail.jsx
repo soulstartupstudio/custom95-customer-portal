@@ -107,7 +107,10 @@ function ProposalPicker({ company, contact, item, choices, qty, onClose, onSelec
 
 export default function CatalogueDetail({ item, company, contact, designContext = null, isMyCatalogue = false, onClose, onAddedToProposal, onStartNewProposal }) {
   const lockedSpec = designContext?.locked_spec || null
-  const reorderLocked = !!lockedSpec   // a true pre-approved re-order with a known spec
+  // Any design-based re-order locks the configurator — same design, same finish,
+  // just set the quantity. The exact colour/size spec may or may not be recorded;
+  // either way we don't re-ask, since the approved design already defines it.
+  const reorderLocked = !!designContext
   const [tiers, setTiers] = useState([])
   const [colours, setColours] = useState([])
   const [customizations, setCustomizations] = useState([])
@@ -183,11 +186,14 @@ export default function CatalogueDetail({ item, company, contact, designContext 
         } else if (lockedSpec.colour_choice == null && item.moq_sales) {
           setQty(item.moq_sales)
         }
-      } else {
+      } else if (!designContext) {
+        // Fresh browse — sensible defaults.
         if (colourList.length > 0) setColour(colourList[0])
         const defaults = customizationList.filter((x) => x.is_default).map((x) => x.id)
         setSelectedCustomizationIds(defaults)
       }
+      // else: re-order without a recorded spec — leave colour/customizations
+      // unset (locked). The approved design defines them; the team reproduces it.
     })()
   }, [item.id, company.id])
 
@@ -217,7 +223,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
   // Effective order qty: per-size sum when sizes apply, otherwise the standalone qty input
   const effectiveQty = sizes.length ? sizeTotal : qty
   const belowMOQ = item.moq_sales && effectiveQty < item.moq_sales
-  const canAdd = effectiveQty > 0 && sizeChosen && (!colours.length || colour)
+  const canAdd = effectiveQty > 0 && sizeChosen && (reorderLocked || !colours.length || colour)
 
   // Pricing math — use effective qty
   const unitBasePrice = getTierPrice(tiers, effectiveQty)

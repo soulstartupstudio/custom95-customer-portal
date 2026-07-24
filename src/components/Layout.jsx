@@ -107,7 +107,7 @@ export default function Layout({ session, contact, company }) {
       case 'brand': return <BrandPage company={company} contact={contact} />
       case 'brandshop': return <BrandshopPage company={company} contact={contact} />
       case 'warehouse': return <WarehousePage company={company} contact={contact} onStartProposalWithItems={openWizardWithItems} />
-      case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} />
+      case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} onStartProposalWithItems={openWizardWithItems} />
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
       default: return null

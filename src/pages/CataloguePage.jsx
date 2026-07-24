@@ -36,7 +36,7 @@ function CatalogueItemCard({ item, coloursByItem, customizationCountByItem, onCl
       </div>
       <div className="p-3">
         <h3 className="text-sm font-medium text-gray-900 truncate">{title}</h3>
-        <div className="text-xs text-gray-500 truncate">{isReorder ? `On ${item.name}` : (item.category || '')}</div>
+        <div className="text-xs text-gray-500 truncate">{item._custom ? 'Custom design' : isReorder ? `On ${item.name}` : (item.category || '')}</div>
         <div className="mt-2 flex items-center justify-between">
           {isReorder ? (
             <span className="text-[10px] text-emerald-700 font-medium inline-flex items-center gap-1"><RotateCw size={10} />Re-order</span>
@@ -62,7 +62,7 @@ function CatalogueItemCard({ item, coloursByItem, customizationCountByItem, onCl
   )
 }
 
-export default function CataloguePage({ company, contact, onStartProposalWithItem }) {
+export default function CataloguePage({ company, contact, onStartProposalWithItem, onStartProposalWithItems }) {
   const [mode, setMode] = useState('all')
   const [myItems, setMyItems] = useState([])
   const [allItems, setAllItems] = useState([])
@@ -81,26 +81,41 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
       const [mine, all] = await Promise.all([
         supabase
           .from('company_catalogue')
-          .select('id, catalogue_item_id, source_design_id, notes, catalogue_items(*), design_tasks:source_design_id(id, title, latest_file_url, status, proposal_requested_items:proposal_requested_item_id(colour_choice, size_breakdown, customization_choices, pantone_code))')
+          .select('id, catalogue_item_id, source_design_id, notes, custom_name, custom_photo_url, catalogue_items(*), design_tasks:source_design_id(id, title, latest_file_url, status, proposal_requested_items:proposal_requested_item_id(colour_choice, size_breakdown, customization_choices, pantone_code))')
           .eq('company_id', company.id),
         supabase.from('catalogue_items').select('*').eq('portal_visible', true).eq('active', true).order('name').limit(200),
       ])
       if (cancelled) return
 
-      // Sign the latest mockup for any My-catalogue rows that point at a design
-      const myRows = (mine.data ?? []).filter((r) => r.catalogue_items)
+      // Sign the latest mockup for every My-catalogue row that points at a design
+      // (both base-product items AND custom items carry a source design).
+      const myRows = mine.data ?? []
       const designIds = myRows.map((r) => r.source_design_id).filter(Boolean)
       const mockupUrls = designIds.length ? await fetchDesignMockupUrls(designIds) : {}
       if (cancelled) return
 
-      // Build enriched My-catalogue items: base product (for pricing/colours/MOQ)
-      // overlaid with the approved design's artwork + the EXACT approved spec
-      // (colour, sizes, customizations, pantone) so re-orders are locked, not
-      // re-configured.
+      // Build enriched My-catalogue items in two shapes:
+      //  • base-product items — the catalogue product overlaid with the approved
+      //    design's artwork + exact approved spec, so re-orders are locked.
+      //  • custom items (no base product) — the approved design itself, re-ordered
+      //    as a custom line. Nothing to configure; just quantity.
       const myArr = myRows.map((r) => {
-        const base = r.catalogue_items
         const design = r.design_tasks
         const designImage = design ? (mockupUrls[design.id] || design.latest_file_url || null) : null
+        if (!r.catalogue_items) {
+          return {
+            _custom: true,
+            _cc_id: r.id,
+            id: r.id, // synthetic id (safe for keys / colour lookups)
+            name: r.custom_name || design?.title || 'Custom item',
+            category: 'Custom',
+            _design_id: r.source_design_id || null,
+            _design_title: r.custom_name || design?.title || null,
+            _design_image: designImage || r.custom_photo_url || null,
+            _cc_notes: r.notes || null,
+          }
+        }
+        const base = r.catalogue_items
         const spec = design?.proposal_requested_items || null
         return {
           ...base,
@@ -156,6 +171,31 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
   const filtered = source
     .filter((i) => category === 'all' || i.category === category)
     .filter((i) => !search || i.name?.toLowerCase().includes(search.toLowerCase()) || i.category?.toLowerCase().includes(search.toLowerCase()))
+
+  // Custom items have no base product to configure — re-ordering just drops the
+  // approved design into a fresh proposal as a custom line (quantity only).
+  const startCustomReorder = (i) => {
+    const title = i._design_title || i.name
+    onStartProposalWithItems?.([{
+      type: 'custom',
+      description: title,
+      quantity: null,
+      reference_url: i._design_image || null,
+      photo_url: i._design_image || null,
+      notes: `Re-order of approved design: ${title}`,
+      source_design_id: i._design_id || null,
+      unit_price_cents: null,
+      available_colours: [],
+      available_sizes: [],
+      available_customizations: [],
+      tiers: [],
+    }], {
+      name: `Re-order — ${title}`,
+      occasion: 'Other',
+      occasion_other: 'Re-order',
+      brief_notes: `Re-order of the approved design "${title}".`,
+    })
+  }
 
   if (loading) return <Spinner />
 
@@ -214,7 +254,7 @@ export default function CataloguePage({ company, contact, onStartProposalWithIte
         />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((i) => <CatalogueItemCard key={i.id} item={i} coloursByItem={coloursByItem} customizationCountByItem={customizationCountByItem} onClick={() => setSelected(i)} />)}
+          {filtered.map((i) => <CatalogueItemCard key={i.id} item={i} coloursByItem={coloursByItem} customizationCountByItem={customizationCountByItem} onClick={() => i._custom ? startCustomReorder(i) : setSelected(i)} />)}
         </div>
       )}
 
