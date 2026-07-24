@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { Store, ShoppingBag, Truck, Users, Palette, Globe, Check, Sparkles, Loader2, ArrowRight } from 'lucide-react'
+import { Store, Boxes, Truck, Users, Palette, Globe, Check, Sparkles, Loader2, ArrowRight, ClipboardList, ShoppingBag } from 'lucide-react'
 import { requestPlanInterest } from '../lib/planBenefits'
 
 const BENEFITS = [
   { icon: Palette, title: 'Fully your brand', body: 'Your logo, colours, and domain. Customers never see “Custom95” — it looks and feels like your own shop.' },
-  { icon: ShoppingBag, title: 'Order on demand', body: 'No bulk buys, no cash tied up in stock. Team, clients, or event guests order what they want, when they want it.' },
-  { icon: Truck, title: 'We handle fulfilment', body: 'We print, pack, and ship every order worldwide — and handle returns. You do nothing after setup.' },
+  { icon: Boxes, title: 'Stock it, we store it', body: 'Buy your merch in bulk and we warehouse it for you. Orders ship straight from your stock — fast, and at proper bulk pricing.' },
+  { icon: ClipboardList, title: 'Or run pre-orders', body: 'Open a pre-order window instead of holding stock. Once the run is confirmed, we produce in bulk and fulfil — no upfront inventory risk.' },
+  { icon: Truck, title: 'We warehouse & fulfil', body: 'We hold your stock and pick, pack, and ship every order under your brand — and handle returns. You do nothing after setup.' },
   { icon: Users, title: 'Perfect for teams & clients', body: 'Onboarding kits, employee swag, client gifts, event merch — all self-serve from one link.' },
   { icon: Globe, title: 'Ship anywhere', body: 'Local warehousing and global delivery, so your people get their merch fast wherever they are.' },
-  { icon: Sparkles, title: 'Budgets & credits', body: 'Set spend limits, hand out gift credits, and keep every department on plan — all built in.' },
 ]
 
 // Faux storefront so the customer can *picture* their own shop.
@@ -75,10 +75,10 @@ export default function BrandshopUpsell() {
             Your own branded merch store — live in weeks.
           </h1>
           <p className="text-[15px] text-gray-600 mt-3 leading-relaxed">
-            A <strong>Brandshop</strong> is your company’s private, white-label online store where your team,
-            clients, and event guests order your branded merch on demand. No bulk orders, no boxes in a closet,
-            no logistics. We design it, you share a link — we print, pack, and ship every order under
-            <em> your</em> brand.
+            A <strong>Brandshop</strong> is your company’s private, white-label online store for your branded merch.
+            You either <strong>stock it</strong> — buy in bulk and we warehouse it for you — or run
+            <strong> pre-orders</strong>, where we produce in bulk once the run is confirmed. Either way,
+            we store your stock and pick, pack, and ship every order under <em>your</em> brand.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             {state === 'sent' ? (
@@ -124,8 +124,8 @@ export default function BrandshopUpsell() {
         <div className="grid sm:grid-cols-3 gap-4">
           {[
             { n: '1', t: 'We design your shop', d: 'Branded storefront + a curated range of your best merch, ready to order.' },
-            { n: '2', t: 'You share the link', d: 'Send it to your team, clients, or guests. They order sizes and quantities themselves.' },
-            { n: '3', t: 'We ship every order', d: 'Printed, packed, and delivered under your brand — anywhere in the world.' },
+            { n: '2', t: 'Stock or pre-order', d: 'Buy in bulk and we warehouse it — or open pre-orders and we produce in bulk once the run is confirmed.' },
+            { n: '3', t: 'We store & ship', d: 'We hold your stock and fulfil every order under your brand — anywhere in the world.' },
           ].map((s) => (
             <div key={s.n} className="flex gap-3">
               <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">{s.n}</div>
