@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { FileText, Receipt, Palette, FolderKanban, ArrowRight, Sparkles, Mail, Phone, Package, Clock } from 'lucide-react'
 import { Card, Badge, StatusBadge, Spinner, formatCents, formatDate, PrimaryButton } from '../components/ui'
 import LoyaltyCard from '../components/LoyaltyCard'
+import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
+import { hasPartnerPlan, planLabel } from '../lib/planBenefits'
 
 const PLAN_LABELS = { starter: 'Starter', growth: 'Growth', scale: 'Scale', enterprise: 'Enterprise' }
 
@@ -109,9 +111,13 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              {company?.plan_tier && (
+              {planLabel(company) ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/15 backdrop-blur ring-1 ring-white/20">
-                  <Sparkles size={10} />{PLAN_LABELS[company.plan_tier] || company.plan_tier}
+                  <Sparkles size={10} />{planLabel(company)} Partner
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/15 backdrop-blur ring-1 ring-white/20">
+                  <Sparkles size={10} />No plan yet
                 </span>
               )}
               {company?.brandshop_addon && (
@@ -135,6 +141,8 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         <StatCard icon={Palette} label="Designs" value={stats.designs} onClick={() => navigate('designs')} tone="amber" />
         <StatCard icon={FolderKanban} label="Active projects" value={stats.projects} onClick={() => navigate('projects')} tone="green" />
       </div>
+
+      {!hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" />}
 
       <LoyaltyCard company={company} onUseCredit={() => navigate('proposals')} />
 

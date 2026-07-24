@@ -1,8 +1,62 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send } from 'lucide-react'
+import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send, Wallet, Sparkles, Lock, Check, Loader2 } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../components/ui'
 import ContactEditor from '../components/ContactEditor'
+import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
+
+// "Coming soon for partner plans" teaser: track costs & set budgets per department.
+function CostsBudgetsTeaser({ company }) {
+  const partner = hasPartnerPlan(company)
+  const [state, setState] = useState(null) // null | 'sending' | 'sent' | 'error'
+  const notify = async () => {
+    setState('sending')
+    try { await requestPlanInterest({ feature: 'Team costs & budgets' }); setState('sent') }
+    catch { setState('error') }
+  }
+  return (
+    <Card>
+      <div className="flex items-start gap-4">
+        <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+          <Wallet size={20} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-gray-900">Costs &amp; budgets</h3>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wide">Coming soon</span>
+            {!partner && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold">
+                <Sparkles size={9} />Partnership Plan
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mt-1">
+            Track spend and set budgets per department, so every team keeps merch spend on plan.
+            {partner
+              ? ' Rolling out to Partnership Plans soon — your account manager will let you know when it’s live.'
+              : ' Part of the Custom95 Partnership Plan.'}
+          </p>
+          {!partner && (
+            <div className="mt-3">
+              {state === 'sent' ? (
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-700"><Check size={15} />We’ll let you know — request sent</span>
+              ) : (
+                <button
+                  onClick={notify}
+                  disabled={state === 'sending'}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {state === 'sending' ? <Loader2 size={15} className="animate-spin" /> : <Lock size={14} />}Notify me &amp; my account manager
+                </button>
+              )}
+              {state === 'error' && <p className="text-xs text-red-600 mt-2">Couldn’t send that just now — please try again.</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending }) {
   const initials = [contact.first_name, contact.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase()
@@ -213,6 +267,8 @@ export default function ContactsPage({ company, contact }) {
           ))}
         </div>
       )}
+
+      <CostsBudgetsTeaser company={company} />
 
       {editing && (
         <ContactEditor

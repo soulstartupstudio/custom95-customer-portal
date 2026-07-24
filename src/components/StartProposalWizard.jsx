@@ -6,6 +6,8 @@ import {
   MapPin, Users, Mail, Phone,
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
+import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
+import { Lock } from 'lucide-react'
 import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
 import { itemLeadDays, orderLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
 import { fetchMerchCreditBalance } from '../lib/loyalty'
@@ -522,7 +524,7 @@ function Cart({ items, onUpdate, onRemove }) {
   if (items.length === 0) {
     return (
       <div className="text-sm text-gray-400 py-6 text-center border border-dashed border-gray-200 rounded-lg">
-        Cart is empty. Add at least one item to continue.
+        No items added yet — optional.
       </div>
     )
   }
@@ -926,6 +928,9 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   const [addressIds, setAddressIds] = useState(resumeDraft?.addressIds ?? [])
   const [addresses, setAddresses] = useState([]) // populated by AddressPicker via onAddressesLoaded
   const [teamIds, setTeamIds] = useState(resumeDraft?.teamIds ?? (contact?.id ? [contact.id] : []))
+  // Warehouse storage is a Partnership Plan feature — non-partners can flag interest
+  // to their account manager right from here. null | 'sending' | 'sent' | 'error'.
+  const [whInterest, setWhInterest] = useState(null)
   const [form, setForm] = useState(resumeDraft?.form ?? {
     name: prefillItem?.catalogue_item ? `${prefillItem.catalogue_item.name} project` : '',
     occasion: '',
@@ -944,6 +949,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
 
   // Editing a recipient field by hand detaches it from the saved contact.
   const editRecipient = (k, v) => setForm((f) => ({ ...f, [k]: v, recipient_contact_id: '' }))
+
+  const requestWarehousePlan = async () => {
+    setWhInterest('sending')
+    try { await requestPlanInterest({ feature: 'Warehouse storage' }); setWhInterest('sent') }
+    catch { setWhInterest('error') }
+  }
 
   // Loyalty / merch credit the customer can apply to this proposal. We only
   // record the *requested* amount on the proposal (portal can't spend the
@@ -1046,6 +1057,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   }, [items])
 
   const needsAddress = form.shipment_type === 'one_address' || form.shipment_type === 'multiple'
+  const partner = hasPartnerPlan(company)
 
   // True when every selected delivery address has on-site contact info
   const selectedAddrsHaveContact = () => {
@@ -1056,20 +1068,23 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       return !!(a && a.contact_name && a.contact_phone && a.contact_email)
     })
   }
-  const warehouseRecipientReady = () =>
-    !!form.recipient_contact_name.trim() && !!form.recipient_contact_phone.trim() && !!form.recipient_contact_email.trim()
-
   // Every item needs a quantity before we can price / move on.
   const allItemsHaveQty = items.length > 0 && items.every((it) => (it.quantity ?? 0) > 0)
 
   const canAdvance = () => {
     if (step === 0) return !!form.name.trim() && !!form.occasion && (form.occasion !== 'Other' || form.occasion_other.trim()) && !!form.brief_notes.trim()
-    if (step === 1) return allItemsHaveQty
+    // Items are optional — a customer may not know yet, or want us to suggest
+    // things. If they do add items, each still needs a quantity to be priceable.
+    if (step === 1) return items.length === 0 || allItemsHaveQty
     if (step === 2) {
       if (!form.shipment_type) return false
-      if (form.shipment_type === 'one_address') return addressIds.length === 1 && selectedAddrsHaveContact()
-      if (form.shipment_type === 'multiple') return addressIds.length >= 1 && selectedAddrsHaveContact()
-      if (form.shipment_type === 'warehouse') return warehouseRecipientReady()
+      // Warehouse storage is a Partnership Plan feature.
+      if (form.shipment_type === 'warehouse') return partner
+      // Delivery address is optional (they may not know it yet). But when an
+      // address IS selected, it must carry an on-site contact.
+      if (form.shipment_type === 'one_address' || form.shipment_type === 'multiple') {
+        return addressIds.length === 0 || selectedAddrsHaveContact()
+      }
       return true
     }
     if (step === 3) return true
@@ -1295,6 +1310,11 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                   Cart {items.length > 0 && `· ${items.length} ${items.length === 1 ? 'item' : 'items'}`}
                 </div>
                 <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
+                {items.length === 0 && (
+                  <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
+                    <Sparkles size={12} className="text-blue-500" />Not sure what you need yet? You can skip this — we'll suggest products and quote them for you.
+                  </div>
+                )}
                 {items.length > 0 && !allItemsHaveQty && (
                   <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
                     <Package size={12} />Enter a quantity for every item to continue.
@@ -1324,28 +1344,65 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">How should we ship?</label>
                 <div className="space-y-2">
-                  {SHIPMENT_TYPES.map((s) => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      onClick={() => update('shipment_type', s.value)}
-                      className={`w-full px-4 py-3 border rounded-lg text-left transition-colors ${
-                        form.shipment_type === s.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{s.label}</div>
-                      <div className="text-xs text-gray-500">{s.hint}</div>
-                    </button>
-                  ))}
+                  {SHIPMENT_TYPES.map((s) => {
+                    const locked = s.value === 'warehouse' && !partner
+                    return (
+                      <button
+                        key={s.value}
+                        type="button"
+                        disabled={locked}
+                        onClick={() => { if (!locked) update('shipment_type', s.value) }}
+                        className={`w-full px-4 py-3 border rounded-lg text-left transition-colors ${
+                          locked
+                            ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                            : form.shipment_type === s.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                          {locked && <Lock size={12} className="text-gray-400" />}
+                          {s.label}
+                          {locked && (
+                            <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold">
+                              <Sparkles size={9} />Partnership Plan required
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">{s.hint}</div>
+                      </button>
+                    )
+                  })}
                 </div>
+                {!partner && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2">
+                    <p className="text-[11px] text-blue-800">
+                      Store stock with us and ship on demand — available on a Custom95 Partnership Plan.
+                    </p>
+                    {whInterest === 'sent' ? (
+                      <span className="text-[11px] font-medium text-green-700 inline-flex items-center gap-1 whitespace-nowrap"><Check size={12} />We'll be in touch</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={requestWarehousePlan}
+                        disabled={whInterest === 'sending'}
+                        className="text-[11px] font-medium text-blue-700 hover:text-blue-800 whitespace-nowrap disabled:opacity-60"
+                      >
+                        {whInterest === 'sending' ? 'Sending…' : 'Notify my account manager'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {needsAddress && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                     <MapPin size={14} />
                     {form.shipment_type === 'one_address' ? 'Select delivery address' : 'Select delivery addresses'}
+                    <span className="text-xs font-normal text-gray-400 ml-1">(optional)</span>
                   </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Don't know the address yet? You can leave this — we'll confirm it with you before shipping.
+                  </p>
                   <AddressPicker
                     company={company}
                     multi={form.shipment_type === 'multiple'}
@@ -1364,10 +1421,10 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
               {form.shipment_type === 'warehouse' && (
                 <div className="border border-blue-200 bg-blue-50/40 rounded-lg p-3 space-y-2">
                   <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                    <Users size={14} className="text-blue-600" />Recipient contact <span className="text-red-500">*</span>
+                    <Users size={14} className="text-blue-600" />Recipient contact <span className="text-xs font-normal text-gray-400">(optional)</span>
                   </div>
                   <p className="text-[11px] text-gray-600">
-                    Stock will land at our warehouse — the team needs a contact for when it's later shipped out to you.
+                    Stock will land at our warehouse. If you know who it later ships to, add them here — otherwise you can leave it and we'll sort it out at fulfilment time.
                   </p>
                   <RecipientContactPicker
                     company={company}
@@ -1387,7 +1444,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                     type="text"
                     value={form.recipient_contact_name}
                     onChange={(e) => editRecipient('recipient_contact_name', e.target.value)}
-                    placeholder="Contact name *"
+                    placeholder="Contact name"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1395,14 +1452,14 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                       type="tel"
                       value={form.recipient_contact_phone}
                       onChange={(e) => editRecipient('recipient_contact_phone', e.target.value)}
-                      placeholder="Phone *"
+                      placeholder="Phone"
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                     <input
                       type="email"
                       value={form.recipient_contact_email}
                       onChange={(e) => editRecipient('recipient_contact_email', e.target.value)}
-                      placeholder="Email *"
+                      placeholder="Email"
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                   </div>

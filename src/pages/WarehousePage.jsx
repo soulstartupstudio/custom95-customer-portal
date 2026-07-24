@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase'
 import {
   Package, TruckIcon, X, AlertTriangle, Activity, Plus, MapPin, Zap, Clock,
   ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight, Download,
-  RefreshCw, XCircle, CheckCircle2,
+  RefreshCw, XCircle, CheckCircle2, Warehouse,
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
 import RestockModal from '../components/RestockModal'
+import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
+import { hasPartnerPlan } from '../lib/planBenefits'
 import { toCsv, downloadCsv, csvDate, csvEur, fileSlug } from '../lib/csv'
 import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
@@ -651,6 +653,8 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
           </div>
         }
       />
+
+      {!hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" feature="Warehousing" icon={Warehouse} />}
 
       {(runningLow.length > 0 || outOfStock.length > 0) && (
         <div className="space-y-2">

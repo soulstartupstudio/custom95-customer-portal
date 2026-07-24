@@ -79,7 +79,9 @@ export default function Layout({ session, contact, company }) {
     } catch { /* ignore */ }
   }, [])
 
-  const visibleTabs = tabs.filter((t) => !t.requiresBrandshop || company?.brandshop_addon)
+  // Brandshop is always visible now — non-partners see a Partnership Plan upsell
+  // inside the tab (the goal is to drive them onto a plan), rather than hiding it.
+  const visibleTabs = tabs
 
   const openWizard = () => { setWizardPrefill(null); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
   const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
