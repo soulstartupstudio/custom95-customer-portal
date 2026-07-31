@@ -169,10 +169,12 @@ export default function CatalogueDetail({ item, company, contact, designContext 
   // Sum surcharges across all selected customizations
   const selectedCustomizations = customizations.filter((c) => selectedCustomizationIds.includes(c.id))
   const customizationSurcharge = selectedCustomizations.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
+  // Setup fees are one-time per order (not per unit).
+  const customizationSetupFee = selectedCustomizations.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
   const unitPrice = unitBasePrice != null ? unitBasePrice + customizationSurcharge : null
   const itemTotal = unitPrice != null ? unitPrice * effectiveQty : null
   const shipCost = shippingCost(item, shippingMethod, effectiveQty)
-  const total = itemTotal != null ? itemTotal + (shipCost ?? 0) : null
+  const total = itemTotal != null ? itemTotal + (shipCost ?? 0) + customizationSetupFee : null
 
   // Pantone match needs a minimum order qty — flag if not met
   const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && effectiveQty < item.pantone_match_moq
@@ -197,7 +199,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
   const insertItem = async (proposalId) => {
     setBusy(true); setError(null)
     const useP = pantoneSelected && pantoneAvailableNow
-    const choices = selectedCustomizations.map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0 }))
+    const choices = selectedCustomizations.map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0, setup_fee_cents: c.setup_fee_cents || 0 }))
     // For re-orders, the description names the design and we link the source.
     const reorderNote = designContext ? `Re-order of pre-approved design: ${designContext.design_title || 'approved design'}` : null
     const combinedNotes = [reorderNote, customizationNotes.trim() || null].filter(Boolean).join('\n') || null
@@ -231,7 +233,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
 
   const handleStartNewProposal = () => {
     const useP = pantoneSelected && pantoneAvailableNow
-    const choices = selectedCustomizations.map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0 }))
+    const choices = selectedCustomizations.map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0, setup_fee_cents: c.setup_fee_cents || 0 }))
     onStartNewProposal?.({
       catalogue_item: item,
       quantity: effectiveQty,
@@ -666,6 +668,12 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                   <span className="text-gray-700">+{formatCents(c.surcharge_cents * effectiveQty)}</span>
                 </div>
               ))}
+              {customizationSetupFee > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-600">Customization setup (one-time)</span>
+                  <span className="text-gray-700">+{formatCents(customizationSetupFee)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs">
                 <span className="text-gray-600">{SHIPPING_LABELS[shippingMethod].label} shipping</span>
                 <span className="text-gray-700">{shipCost != null ? formatCents(shipCost) : 'Quote'}</span>

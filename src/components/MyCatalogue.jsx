@@ -88,7 +88,7 @@ export default function MyCatalogue({ company, contact, onStartProposalWithItems
       {filtered.length === 0 ? (
         <EmptyState icon={BookOpen} title="Nothing matches your search" />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filtered.map((i) => (
             <CatalogueItemCard
               key={i.id}

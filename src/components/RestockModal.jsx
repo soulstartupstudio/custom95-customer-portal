@@ -210,7 +210,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
       if (catIds.length) {
         const [csRes, czRes] = await Promise.all([
           supabase.from('catalogue_colour_options').select('id, catalogue_item_id, colour_name, hex_code').in('catalogue_item_id', catIds).eq('active', true).order('colour_name'),
-          supabase.from('catalogue_customizations').select('id, catalogue_item_id, name, description, surcharge_cents, is_default, sort_order').in('catalogue_item_id', catIds).order('sort_order'),
+          supabase.from('catalogue_customizations').select('id, catalogue_item_id, name, description, surcharge_cents, setup_fee_cents, is_default, sort_order').in('catalogue_item_id', catIds).order('sort_order'),
         ])
         for (const c of csRes.data ?? []) (coloursByItem[c.catalogue_item_id] = coloursByItem[c.catalogue_item_id] || []).push(c)
         for (const c of czRes.data ?? []) (custByItem[c.catalogue_item_id] = custByItem[c.catalogue_item_id] || []).push(c)

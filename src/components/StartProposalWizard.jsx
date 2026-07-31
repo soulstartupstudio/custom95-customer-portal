@@ -383,8 +383,9 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
   const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
   const selectedCustomizations = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
   const surcharge = selectedCustomizations.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
+  const setupFee = selectedCustomizations.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
   const unitPrice = baseUnit != null ? baseUnit + surcharge : null
-  const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity : null
+  const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity + setupFee : null
   const hasOptions = it.type === 'catalogue' && (
     (it.available_colours?.length ?? 0) > 0 ||
     hasSizes ||
@@ -1074,7 +1075,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     // Fetch colour + customization options so the wizard cart can offer the choices
     const [csRes, czRes] = await Promise.all([
       supabase.from('catalogue_colour_options').select('id, colour_name, hex_code').eq('catalogue_item_id', item.id).eq('active', true).order('colour_name'),
-      supabase.from('catalogue_customizations').select('id, name, description, surcharge_cents, is_default, sort_order').eq('catalogue_item_id', item.id).order('sort_order'),
+      supabase.from('catalogue_customizations').select('id, name, description, surcharge_cents, setup_fee_cents, is_default, sort_order').eq('catalogue_item_id', item.id).order('sort_order'),
     ])
     const colours = csRes.data ?? []
     const customizations = czRes.data ?? []
@@ -1171,10 +1172,10 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     let hasTBD = false
     for (const it of items) {
       const base = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
-      const surcharge = (it.available_customizations || [])
-        .filter((c) => (it.customization_choice_ids || []).includes(c.id))
-        .reduce((s, c) => s + (c.surcharge_cents || 0), 0)
-      if (base != null && it.quantity) total += (base + surcharge) * it.quantity
+      const selected = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
+      const surcharge = selected.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
+      const setupFee = selected.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
+      if (base != null && it.quantity) total += (base + surcharge) * it.quantity + setupFee
       else hasTBD = true
     }
     return { total, hasTBD }
@@ -1297,7 +1298,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       const rows = items.map((it) => {
         const choices = (it.available_customizations || [])
           .filter((c) => (it.customization_choice_ids || []).includes(c.id))
-          .map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0 }))
+          .map((c) => ({ id: c.id, name: c.name, surcharge_cents: c.surcharge_cents || 0, setup_fee_cents: c.setup_fee_cents || 0 }))
         return {
           proposal_id: proposal.id,
           company_id: company.id,
