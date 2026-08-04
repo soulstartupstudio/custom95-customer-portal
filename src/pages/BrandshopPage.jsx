@@ -1101,9 +1101,9 @@ export default function BrandshopPage({ company, contact }) {
   if (shops.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Brandshop" subtitle="Your own branded merch store." />
-        <BrandshopUpsell />
-        <div className="border-t border-gray-100 pt-6"><RedeemSection company={company} contact={contact} /></div>
+        <PageHeader title="Brandshop & Redeem" subtitle="Get merch to your people — the quick way with a redeem page, or the full branded store." />
+        <RedeemSection company={company} contact={contact} />
+        <div className="border-t border-gray-100 pt-6"><BrandshopUpsell compact /></div>
       </div>
     )
   }

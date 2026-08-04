@@ -14,6 +14,15 @@ const HOW_IT_WORKS = [
   { icon: Package, title: 'We fulfil from stock', body: 'Claims flow straight into fulfilment. Anything pre-ordered beyond stock becomes the “to produce” number.' },
 ]
 
+const USE_CASES = [
+  'Employee onboarding & welcome kits',
+  'Event & conference giveaways',
+  'Client & partner gifts',
+  'Reward / loyalty redemption',
+  'Sample & swag requests',
+  'Seasonal & holiday drops',
+]
+
 function CampaignCard({ c }) {
   const [copied, setCopied] = useState(false)
   const url = `${REDEEM_BASE}/?redeem=${c.slug}`
@@ -147,6 +156,14 @@ export default function RedeemSection({ company, contact }) {
               </div>
             )
           })}
+        </div>
+        <div className="mt-5">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Perfect for</div>
+          <div className="flex flex-wrap gap-1.5">
+            {USE_CASES.map((u) => (
+              <span key={u} className="text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-1">{u}</span>
+            ))}
+          </div>
         </div>
         <div className="mt-5">
           {canCreate ? (
