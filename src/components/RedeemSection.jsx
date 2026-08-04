@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Ticket, Gift, Copy, Check, ExternalLink, Sparkles, Package, Users, Boxes, Loader2, ArrowRight, Plus } from 'lucide-react'
+import { Ticket, Gift, Copy, Check, ExternalLink, Sparkles, Package, Users, Boxes, Loader2, ArrowRight, Plus, Settings } from 'lucide-react'
 import { Badge, StatusBadge, formatDate } from './ui'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
 import CreateRedeemModal from './CreateRedeemModal'
@@ -23,28 +23,27 @@ const USE_CASES = [
   'Seasonal & holiday drops',
 ]
 
-function CampaignCard({ c }) {
+function CampaignCard({ c, onManage }) {
   const [copied, setCopied] = useState(false)
   const url = `${REDEEM_BASE}/?redeem=${c.slug}`
   const copy = () => { navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+      <button onClick={onManage} className="w-full flex items-start justify-between gap-3 text-left group">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-gray-900 truncate">{c.name}</div>
+          <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-indigo-700">{c.name}</div>
           <div className="text-xs text-gray-500 mt-0.5">
             {c.picks_per_person} pick{c.picks_per_person === 1 ? '' : 's'} / person
-            {c._claims ? ` · ${c._claims} claim${c._claims === 1 ? '' : 's'}` : ''}
+            {` · ${c._claims || 0} claim${c._claims === 1 ? '' : 's'}`}
             {c.closes_at ? ` · closes ${formatDate(c.closes_at)}` : ''}
           </div>
         </div>
         <StatusBadge status={c.status} />
-      </div>
+      </button>
       <div className="mt-3 flex items-center gap-2">
         <div className="flex-1 min-w-0 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 font-mono truncate">{url}</div>
-        <button onClick={copy} title="Copy link" className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
-          {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
-        </button>
+        <button onClick={onManage} title="Manage & orders" className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"><Settings size={14} /></button>
+        <button onClick={copy} title="Copy link" className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">{copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}</button>
         <a href={url} target="_blank" rel="noreferrer" title="Open" className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"><ExternalLink size={14} /></a>
       </div>
     </div>
@@ -53,10 +52,11 @@ function CampaignCard({ c }) {
 
 export default function RedeemSection({ company, contact }) {
   const [campaigns, setCampaigns] = useState([])
-  const [hasStock, setHasStock] = useState(false)
+  const [hasProducts, setHasProducts] = useState(false)
   const [loading, setLoading] = useState(true)
   const [interest, setInterest] = useState(null) // null | 'sending' | 'sent' | 'error'
-  const [showCreate, setShowCreate] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editCampaign, setEditCampaign] = useState(null) // null = create
   const [reload, setReload] = useState(0)
   const partner = hasPartnerPlan(company)
 
@@ -67,7 +67,7 @@ export default function RedeemSection({ company, contact }) {
       setLoading(true)
       const [campRes, invRes] = await Promise.all([
         supabase.from('redeem_campaigns').select('id, name, slug, status, picks_per_person, opens_at, closes_at, created_at').eq('company_id', company.id).order('created_at', { ascending: false }),
-        supabase.from('warehouse_inventory_client').select('available_qty').eq('company_id', company.id),
+        supabase.from('warehouse_inventory_client').select('id').eq('company_id', company.id).limit(1),
       ])
       if (cancelled) return
       const list = campRes.data ?? []
@@ -80,7 +80,7 @@ export default function RedeemSection({ company, contact }) {
       }
       if (cancelled) return
       setCampaigns(list)
-      setHasStock((invRes.data ?? []).some((i) => (i.available_qty ?? 0) > 0))
+      setHasProducts((invRes.data ?? []).length > 0)
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -94,17 +94,19 @@ export default function RedeemSection({ company, contact }) {
 
   if (loading) return null
 
-  const canCreate = partner && hasStock
+  const canCreate = partner && hasProducts
+  const openCreate = () => { setEditCampaign(null); setModalOpen(true) }
+  const openManage = (c) => { setEditCampaign(c); setModalOpen(true) }
   const CreateButton = ({ label = 'Create redeem page' }) => (
-    <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+    <button onClick={openCreate} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
       <Plus size={15} />{label}
     </button>
   )
-  const modal = showCreate && (
-    <CreateRedeemModal company={company} contact={contact} onClose={() => setShowCreate(false)} onCreated={() => setReload((r) => r + 1)} />
+  const modal = modalOpen && (
+    <CreateRedeemModal company={company} contact={contact} campaign={editCampaign} onClose={() => setModalOpen(false)} onSaved={() => setReload((r) => r + 1)} />
   )
 
-  // Partner with live campaigns → manage/share them (+ create more if they have stock).
+  // Partner with live campaigns → manage/share them, and add as many more as they like.
   if (partner && campaigns.length > 0) {
     return (
       <>
@@ -115,12 +117,12 @@ export default function RedeemSection({ company, contact }) {
               <h2 className="text-base font-semibold text-gray-900">Redeem pages</h2>
               <Badge tone="gray">{campaigns.length}</Badge>
             </div>
-            {canCreate && <CreateButton label="New" />}
+            {canCreate && <CreateButton label="New page" />}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {campaigns.map((c) => <CampaignCard key={c.id} c={c} />)}
+            {campaigns.map((c) => <CampaignCard key={c.id} c={c} onManage={() => openManage(c)} />)}
           </div>
-          <p className="text-xs text-gray-500">Share a link and people claim merch from your stock.</p>
+          <p className="text-xs text-gray-500">Add as many as you like — each can target different products and use cases. Click a page to edit its settings or see who claimed what.</p>
         </div>
         {modal}
       </>
@@ -169,7 +171,7 @@ export default function RedeemSection({ company, contact }) {
           {canCreate ? (
             <div className="flex items-center gap-3 flex-wrap">
               <CreateButton />
-              <span className="text-xs text-gray-500">You have warehouse stock — set one up in a minute.</span>
+              <span className="text-xs text-gray-500">You have warehouse products — set one up in a minute.</span>
             </div>
           ) : partner ? (
             <p className="text-sm text-gray-500">Add warehouse stock first, then you can create a redeem page here yourself.</p>
