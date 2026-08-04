@@ -23,12 +23,28 @@ const STATUS_TONES = {
   active: 'blue', in_progress: 'blue', in_production: 'blue', in_transit: 'blue',
   declined: 'red', lost: 'red', cancelled: 'red', low_stock: 'yellow', out_of_stock: 'red',
   brief_pending: 'yellow', revision_requested: 'yellow',
+  // Granular project line-item statuses (kept in sync with the team app's list).
+  preparation: 'gray', order_placed: 'blue', ordered: 'blue',
+  in_transit_warehouse: 'blue', in_transit_office: 'blue', in_transit_customer: 'blue', shipped: 'blue',
+  warehouse_awaiting: 'yellow', warehouse_delivered: 'green', warehouse_in_stock: 'green',
+  at_warehouse: 'green', office_in_stock: 'green', delivered_customer: 'green',
+  problem: 'red', on_hold: 'yellow',
+}
+
+// Customer-friendly labels for the granular line-item statuses (fallback: prettified key).
+const STATUS_LABELS = {
+  preparation: 'Preparing', order_placed: 'Ordered', ordered: 'Ordered', in_production: 'In production',
+  in_transit_warehouse: 'In transit', in_transit_office: 'In transit', in_transit_customer: 'On its way to you',
+  shipped: 'Shipped', warehouse_awaiting: 'Inbound to warehouse',
+  warehouse_delivered: 'In stock', warehouse_in_stock: 'In stock', at_warehouse: 'In stock', office_in_stock: 'In stock',
+  delivered_customer: 'Delivered', delivered: 'Delivered', problem: 'Issue', on_hold: 'On hold', cancelled: 'Cancelled',
 }
 
 export function StatusBadge({ status }) {
   if (!status) return null
   const tone = STATUS_TONES[status] || 'gray'
-  return <Badge tone={tone}>{status.replace(/_/g, ' ')}</Badge>
+  const label = STATUS_LABELS[status] || status.replace(/_/g, ' ')
+  return <Badge tone={tone}>{label}</Badge>
 }
 
 export function Card({ title, action, children, className = '' }) {

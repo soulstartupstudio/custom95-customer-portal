@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
-import { Download, X, Check, ThumbsDown, AlertCircle, Clock } from 'lucide-react'
+import { Download, X, Check, ThumbsDown, AlertCircle, Clock, TrendingDown } from 'lucide-react'
 import { StatusBadge, formatCents, formatDate, PrimaryButton, SecondaryButton, Badge, deriveQuoteBreakdown } from './ui'
+import { optionRows, OPTION_FOOTNOTE } from '../lib/quoteOptions'
 import DesignBriefModal from './DesignBriefModal'
 
 const PIPELINE = [
@@ -61,14 +62,34 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
   const [error, setError] = useState(null)
   const [mode, setMode] = useState(null)
   const [briefOpen, setBriefOpen] = useState(false)
+  const [optionsByLine, setOptionsByLine] = useState({})
 
   useEffect(() => {
+    let cancelled = false
     supabase
       .from('quote_line_items_client')
       .select('*')
       .eq('quote_id', quote.id)
       .order('sort_order')
-      .then(({ data }) => setItems(data ?? []))
+      .then(async ({ data }) => {
+        if (cancelled) return
+        const its = data ?? []
+        setItems(its)
+        const ids = its.map((i) => i.id)
+        if (ids.length) {
+          const { data: opts } = await supabase
+            .from('quote_line_item_options')
+            .select('id, line_item_id, quantity, unit_sales_price_cents')
+            .in('line_item_id', ids)
+          if (cancelled) return
+          const by = {}
+          for (const o of opts ?? []) (by[o.line_item_id] = by[o.line_item_id] || []).push(o)
+          setOptionsByLine(by)
+        } else {
+          setOptionsByLine({})
+        }
+      })
+    return () => { cancelled = true }
   }, [quote.id])
 
   const isDraft = quote.status === 'draft'
@@ -178,18 +199,39 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((i) => (
-                      <tr key={i.id} className="border-t border-gray-100">
-                        <td className="px-3 py-2">
-                          <div className="text-gray-900">{i.description}</div>
-                          {i.selected_colour && <div className="text-xs text-gray-500 mt-0.5">Colour: {i.selected_colour}</div>}
-                          {(i.customization_notes || i.notes) && <div className="text-xs text-gray-500 mt-0.5">{i.customization_notes || i.notes}</div>}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-700">{i.quantity}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatCents(i.unit_sales_price_cents)}</td>
-                        <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatCents(i.total_sales_cents)}</td>
-                      </tr>
-                    ))}
+                    {items.map((i) => {
+                      const rows = optionRows(i, optionsByLine[i.id], quote)
+                      return (
+                        <Fragment key={i.id}>
+                          <tr className="border-t border-gray-100">
+                            <td className="px-3 py-2">
+                              <div className="text-gray-900">{i.description}</div>
+                              {i.selected_colour && <div className="text-xs text-gray-500 mt-0.5">Colour: {i.selected_colour}</div>}
+                              {(i.customization_notes || i.notes) && <div className="text-xs text-gray-500 mt-0.5">{i.customization_notes || i.notes}</div>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-700">{i.quantity}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">{formatCents(i.unit_sales_price_cents)}</td>
+                            <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatCents(i.total_sales_cents)}</td>
+                          </tr>
+                          {rows.length > 0 && (
+                            <tr className="bg-blue-50/40">
+                              <td colSpan={4} className="px-3 pb-2.5 pt-1">
+                                <div className="text-[11px] font-semibold text-blue-800 inline-flex items-center gap-1 mb-1"><TrendingDown size={12} />Order more, pay less per piece</div>
+                                <div className="space-y-0.5">
+                                  {rows.map((r) => (
+                                    <div key={r.id} className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-700"><span className="font-medium text-gray-900">{r.quantity} pcs</span> · {formatCents(r.unitCents)}/pc</span>
+                                      {r.saving.isBetter && <span className="text-green-700 font-medium">save {formatCents(r.saving.perPieceCents)}/pc</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">{OPTION_FOOTNOTE}</div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

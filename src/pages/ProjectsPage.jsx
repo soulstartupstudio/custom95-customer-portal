@@ -149,7 +149,7 @@ function Kanban({ projects, onOpen }) {
 function ItemTrackingCard({ item, design, teamAssets = [], onOpenDesign }) {
   const hasTracking = item.tracking_customer || item.carrier_name
   const delivered = !!item.ata
-  const inTransit = item.status === 'in_transit' || item.status === 'shipped'
+  const inTransit = ['in_transit', 'in_transit_warehouse', 'in_transit_office', 'in_transit_customer', 'shipped'].includes(item.status)
 
   const tone = delivered
     ? 'border-green-200 bg-green-50/40'

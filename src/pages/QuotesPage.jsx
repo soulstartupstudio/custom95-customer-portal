@@ -35,7 +35,7 @@ export default function QuotesPage({ company, contact, deepLinkId, clearDeepLink
       setLoading(true)
       const { data } = await supabase
         .from('quotes')
-        .select('id, proposal_id, status, subtotal_cents, vat_rate, vat_amount_cents, total_cents, accepted_at, accepted_by_name, quote_pdf_url, notes, created_at, payment_terms, delivery_cost_cents')
+        .select('id, proposal_id, status, subtotal_cents, vat_rate, vat_amount_cents, total_cents, accepted_at, accepted_by_name, quote_pdf_url, notes, created_at, payment_terms, delivery_cost_cents, discount_cents, discount_type, discount_pct, merch_credit_cents, barter_credit_cents')
         .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       if (cancelled) return

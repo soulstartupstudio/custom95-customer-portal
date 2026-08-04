@@ -8,6 +8,7 @@ import {
   PageHeader, EmptyState, Spinner, Badge, formatCents, formatDate, PrimaryButton, SecondaryButton,
 } from '../components/ui'
 import BrandshopUpsell from '../components/BrandshopUpsell'
+import RedeemSection from '../components/RedeemSection'
 
 // ---------- Edge function helper ----------
 async function invokeShopify(body) {
@@ -1102,6 +1103,7 @@ export default function BrandshopPage({ company, contact }) {
       <div className="space-y-6">
         <PageHeader title="Brandshop" subtitle="Your own branded merch store." />
         <BrandshopUpsell />
+        <div className="border-t border-gray-100 pt-6"><RedeemSection company={company} contact={contact} /></div>
       </div>
     )
   }
@@ -1111,6 +1113,7 @@ export default function BrandshopPage({ company, contact }) {
       <div className="space-y-6">
         <PageHeader title="Brandshops" subtitle="Pick a shop to manage." />
         <ShopList shops={shops} onSelect={setSelected} />
+        <div className="border-t border-gray-100 pt-6"><RedeemSection company={company} contact={contact} /></div>
       </div>
     )
   }
