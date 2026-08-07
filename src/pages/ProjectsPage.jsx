@@ -27,9 +27,9 @@ const ATTENTION_STAGES = ['dispute']
 // Customer-facing delivery notes. Ops sometimes paste the full internal
 // production template in here (supplier names, service specs, internal
 // reminders) which customers must not see. When internal content is detected,
-// show only the intro under "Project info:" and the "Delivery address:"
-// section — everything else stays internal. If internal content is detected
-// but nothing safe can be extracted, show nothing rather than risk leaking.
+// show only the "Delivery address:" section — everything else (including the
+// "Project info:" intro) stays internal. If internal content is detected but
+// no address can be extracted, show nothing rather than risk leaking.
 // Notes without any internal marker (normal customer notes) render as-is.
 const INTERNAL_NOTE_MARKERS = /project\s*info\s*:|amounts\s*&\s*service|service\s*notes\s*:|\*\*\s*product|\(\s*[a-z0-9][a-z0-9-]*\.(?:nl|com|be|de|eu|net)\s*\)/i
 function customerDeliveryNotes(raw) {
@@ -42,12 +42,8 @@ function customerDeliveryNotes(raw) {
     const stop = rest.search(/\n[^\n:]{1,80}:[ \t]*(?:\n|$)/)
     return (stop === -1 ? rest : rest.slice(0, stop)).trim()
   }
-  const info = section(/project\s*info\s*:/i)
   const addr = section(/delivery\s*address(?:es)?\s*:/i)
-  const parts = []
-  if (info) parts.push(`Project info:\n${info}`)
-  if (addr) parts.push(`Delivery address:\n${addr}`)
-  return parts.join('\n\n')
+  return addr ? `Delivery address:\n${addr}` : ''
 }
 
 const INVOICE_STATUS_LABEL = {
