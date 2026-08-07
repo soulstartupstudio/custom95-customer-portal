@@ -24,6 +24,31 @@ const JOURNEY = [
 const DEAD_STAGES = ['cancelled']
 const ATTENTION_STAGES = ['dispute']
 
+// Customer-facing delivery notes. Ops sometimes paste the full internal
+// production template in here (supplier names, service specs, internal
+// reminders) which customers must not see. When that template is detected
+// (a "Project info:" header), show only the intro under "Project info:" and
+// the "Delivery address:" section — everything in between stays internal.
+// If the template is detected but nothing safe can be extracted, show
+// nothing rather than risk leaking. Notes without the template render as-is.
+function customerDeliveryNotes(raw) {
+  if (!raw || !/project\s*info\s*:/i.test(raw)) return raw
+  const section = (labelRe) => {
+    const m = raw.match(labelRe)
+    if (!m) return null
+    const rest = raw.slice(m.index + m[0].length)
+    // Capture until the next section header — a line that ends with a colon.
+    const stop = rest.search(/\n[^\n:]{1,80}:[ \t]*(?:\n|$)/)
+    return (stop === -1 ? rest : rest.slice(0, stop)).trim()
+  }
+  const info = section(/project\s*info\s*:/i)
+  const addr = section(/delivery\s*address(?:es)?\s*:/i)
+  const parts = []
+  if (info) parts.push(`Project info:\n${info}`)
+  if (addr) parts.push(`Delivery address:\n${addr}`)
+  return parts.join('\n\n')
+}
+
 const INVOICE_STATUS_LABEL = {
   draft: 'Draft', sent: 'Awaiting payment', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled',
 }
@@ -521,13 +546,16 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
                 <div className="text-xs text-gray-400">No addresses on file for this project.</div>
               )}
 
-              {/* Delivery notes from the proposal wizard */}
-              {project.delivery_notes && (
-                <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                  <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Delivery notes</div>
-                  <div className="text-sm text-gray-800 whitespace-pre-wrap">{project.delivery_notes}</div>
-                </div>
-              )}
+              {/* Delivery notes from the proposal wizard (internal template filtered) */}
+              {(() => {
+                const visible = customerDeliveryNotes(project.delivery_notes)
+                return visible ? (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Delivery notes</div>
+                    <div className="text-sm text-gray-800 whitespace-pre-wrap">{visible}</div>
+                  </div>
+                ) : null
+              })()}
             </div>
           </SectionBlock>
 
