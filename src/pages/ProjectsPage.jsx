@@ -26,13 +26,14 @@ const ATTENTION_STAGES = ['dispute']
 
 // Customer-facing delivery notes. Ops sometimes paste the full internal
 // production template in here (supplier names, service specs, internal
-// reminders) which customers must not see. When that template is detected
-// (a "Project info:" header), show only the intro under "Project info:" and
-// the "Delivery address:" section — everything in between stays internal.
-// If the template is detected but nothing safe can be extracted, show
-// nothing rather than risk leaking. Notes without the template render as-is.
+// reminders) which customers must not see. When internal content is detected,
+// show only the intro under "Project info:" and the "Delivery address:"
+// section — everything else stays internal. If internal content is detected
+// but nothing safe can be extracted, show nothing rather than risk leaking.
+// Notes without any internal marker (normal customer notes) render as-is.
+const INTERNAL_NOTE_MARKERS = /project\s*info\s*:|amounts\s*&\s*service|service\s*notes\s*:|\*\*\s*product|\(\s*[a-z0-9][a-z0-9-]*\.(?:nl|com|be|de|eu|net)\s*\)/i
 function customerDeliveryNotes(raw) {
-  if (!raw || !/project\s*info\s*:/i.test(raw)) return raw
+  if (!raw || !INTERNAL_NOTE_MARKERS.test(raw)) return raw
   const section = (labelRe) => {
     const m = raw.match(labelRe)
     if (!m) return null
