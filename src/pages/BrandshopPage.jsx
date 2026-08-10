@@ -645,6 +645,7 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
           )}
           {tab === 'reports' && (
             <ReportsTab
+              shop={shop}
               orders={orders}
               customers={customers}
               orderItems={orderItems}
@@ -979,7 +980,143 @@ function VouchersTab({ discounts, onCreate, onDelete }) {
   )
 }
 
-function ReportsTab({ orders, customers, orderItems, variantsByProduct, products }) {
+// --- Monthly PDF report archive (brandshop_reports) ---
+function MonthlyReports({ shop }) {
+  const [reports, setReports] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [preview, setPreview] = useState(null) // report row being viewed
+  const [downloadingId, setDownloadingId] = useState(null)
+
+  useEffect(() => {
+    if (!shop?.id) return
+    let cancelled = false
+    supabase
+      .from('brandshop_reports')
+      .select('id, period_start, period_label, pdf_url, file_size_bytes, generated_at')
+      .eq('brandshop_id', shop.id)
+      .order('period_start', { ascending: false })
+      .then(({ data }) => { if (!cancelled) { setReports(data ?? []); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [shop?.id])
+
+  const download = async (r) => {
+    setDownloadingId(r.id)
+    try {
+      const res = await fetch(r.pdf_url)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${(shop.shop_name || 'brandshop').replace(/\s+/g, '-')}-report-${r.period_start?.slice(0, 7)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      window.open(r.pdf_url, '_blank', 'noreferrer')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  // Current month progress → when the next report becomes available
+  const now = new Date()
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const monthPct = Math.round((now.getDate() / daysInMonth) * 100)
+  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const nextAvailable = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+  if (loading) return <div className="text-sm text-gray-400 py-4 text-center">Loading reports…</div>
+
+  return (
+    <div className="space-y-3">
+      <div className="text-sm font-semibold text-gray-900">Monthly reports</div>
+
+      {/* Upcoming report — month in progress */}
+      <div className="bg-white rounded-xl border border-dashed border-gray-300 p-4">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">{monthLabel}</div>
+            <div className="text-xs text-gray-500">In progress — report available {nextAvailable}</div>
+          </div>
+          <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap">Day {now.getDate()} of {daysInMonth}</span>
+        </div>
+        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div className="h-full bg-blue-500 transition-all" style={{ width: `${monthPct}%` }} />
+        </div>
+      </div>
+
+      {/* Archive — newest first */}
+      {reports.length === 0 ? (
+        <div className="text-xs text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-lg">
+          No monthly reports yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {reports.map((r) => (
+            <div
+              key={r.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setPreview(r)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreview(r) } }}
+              className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gray-900 text-white flex items-center justify-center flex-shrink-0">
+                <FileText size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-gray-900">{r.period_label}</div>
+                <div className="text-xs text-gray-500">
+                  Monthly analytics report
+                  {r.file_size_bytes ? ` · ${r.file_size_bytes >= 1024 * 1024 ? `${(r.file_size_bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(r.file_size_bytes / 1024))} KB`}` : ''}
+                  {r.generated_at ? ` · generated ${new Date(r.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); download(r) }}
+                disabled={downloadingId === r.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 flex-shrink-0"
+              >
+                <Download size={12} />{downloadingId === r.id ? 'Preparing…' : 'Download'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* PDF popup */}
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-stretch sm:items-center justify-center sm:p-6" onClick={() => setPreview(null)}>
+          <div className="w-full max-w-4xl bg-white sm:rounded-xl shadow-xl h-full sm:h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900 truncate">{preview.period_label} — Monthly report</div>
+                <div className="text-[11px] text-gray-500 truncate">{shop.shop_name || shop.shop_domain}</div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => download(preview)}
+                  disabled={downloadingId === preview.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Download size={12} />{downloadingId === preview.id ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              </div>
+            </div>
+            <iframe src={preview.pdf_url} title={`${preview.period_label} report`} className="flex-1 w-full border-0 bg-gray-100" />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReportsTab({ shop, orders, customers, orderItems, variantsByProduct, products }) {
   const downloadOrders = () => {
     downloadCsv('brandshop-orders.csv', toCsv(orders, [
       { label: 'Order', value: (r) => r.order_name || `#${r.shopify_order_number}` },
@@ -1049,7 +1186,9 @@ function ReportsTab({ orders, customers, orderItems, variantsByProduct, products
     { id: 'lines', title: 'Line items', desc: `${orderItems.length} rows — one per order line, ideal for accounting`, onClick: downloadLineItems },
   ]
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <MonthlyReports shop={shop} />
+      <div className="space-y-3">
       <p className="text-sm text-gray-600">Download CSV reports of your brandshop data.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {tiles.map((t) => (
@@ -1065,6 +1204,7 @@ function ReportsTab({ orders, customers, orderItems, variantsByProduct, products
             <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><Download size={16} /></div>
           </button>
         ))}
+      </div>
       </div>
     </div>
   )
