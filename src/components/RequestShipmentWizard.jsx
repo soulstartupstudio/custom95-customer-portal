@@ -476,7 +476,17 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch sm:items-center justify-center sm:p-4" onClick={onClose}>
-      <div className="w-full max-w-3xl bg-white sm:rounded-xl shadow-xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      {/*
+        translate="no" / notranslate: this wizard re-renders heavily (step swaps,
+        the option list and grand-total toggling as you pick a carrier). Google
+        Translate — which customers use to read the English portal in their own
+        language — reparents text nodes into <font> wrappers, and React then
+        crashes with "NotFoundError: Failed to execute 'removeChild' on 'Node'"
+        because the node it wants to remove now lives inside a Translate wrapper.
+        Opting this interactive subtree out of translation keeps React's DOM
+        stable. See the STELZ report (Aug 2026).
+      */}
+      <div translate="no" className="notranslate w-full max-w-3xl bg-white sm:rounded-xl shadow-xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Truck size={18} className="text-blue-600" />
