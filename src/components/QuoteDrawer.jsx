@@ -138,7 +138,7 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/30 flex justify-end" onClick={onClose}>
+    <div translate="no" className="notranslate fixed inset-0 z-50 bg-black/30 flex justify-end" onClick={onClose}>
       <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>

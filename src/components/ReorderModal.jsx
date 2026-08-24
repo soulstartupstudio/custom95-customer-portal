@@ -127,7 +127,7 @@ export default function ReorderModal({ item, company, contact, onClose, onAdded,
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div translate="no" className="notranslate fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
           <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
             <div className="min-w-0">
