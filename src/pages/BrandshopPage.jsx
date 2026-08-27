@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Store, ExternalLink, Package, Users as UsersIcon, ShoppingBag, TrendingUp,
-  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText, Search,
+  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText, Search, Percent,
 } from 'lucide-react'
 import {
   PageHeader, EmptyState, Spinner, Badge, formatCents, formatDate, PrimaryButton, SecondaryButton,
 } from '../components/ui'
 import BrandshopUpsell from '../components/BrandshopUpsell'
 import RedeemSection from '../components/RedeemSection'
+import QuickDiscountModal from '../components/QuickDiscountModal'
 
 // ---------- Edge function helper ----------
 async function invokeShopify(body) {
@@ -56,6 +57,18 @@ const APPROVAL_MANAGER_EMAILS = [
 function canManageApproval(shop, contact) {
   const email = (contact?.email || '').trim().toLowerCase()
   return !!shop?.customer_approval_enabled && APPROVAL_MANAGER_EMAILS.includes(email)
+}
+
+// ---------- Quick % discount builder (per-shop rollout) ----------
+// One-screen percentage-discount creator with product scoping and code
+// generation, currently only for the Kracht brandshop. A shop qualifies when
+// its name or domain contains one of these entries (keep them lowercase);
+// add entries to roll the builder out to other shops.
+const QUICK_DISCOUNT_SHOPS = ['kracht']
+
+function hasQuickDiscounts(shop) {
+  const haystack = `${shop?.shop_name || ''} ${shop?.shop_domain || ''}`.toLowerCase()
+  return QUICK_DISCOUNT_SHOPS.some((needle) => haystack.includes(needle))
 }
 
 function parseTags(tags) {
@@ -487,6 +500,8 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
   const [customerModal, setCustomerModal] = useState(null) // { mode, existing? }
   const [creditModal, setCreditModal] = useState(null) // customer
   const [voucherModal, setVoucherModal] = useState(false)
+  const [quickDiscountModal, setQuickDiscountModal] = useState(false)
+  const quickDiscounts = hasQuickDiscounts(shop)
 
   useEffect(() => {
     let cancelled = false
@@ -633,6 +648,8 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
           {tab === 'vouchers' && (
             <VouchersTab
               discounts={discounts}
+              quickEnabled={quickDiscounts}
+              onQuickCreate={() => setQuickDiscountModal(true)}
               onCreate={() => setVoucherModal(true)}
               onDelete={async (d) => {
                 if (!confirm(`Delete voucher "${d.code}"? This removes it from Shopify too.`)) return
@@ -680,6 +697,14 @@ function BrandshopDetail({ shop, company, contact, onBack, hasMultiple }) {
           customers={customers}
           onClose={() => setVoucherModal(false)}
           onSaved={() => { setVoucherModal(false); setRefresh((r) => r + 1) }}
+        />
+      )}
+      {quickDiscountModal && (
+        <QuickDiscountModal
+          shop={shop}
+          products={products}
+          onClose={() => setQuickDiscountModal(false)}
+          onCreated={() => setRefresh((r) => r + 1)}
         />
       )}
     </div>
@@ -934,12 +959,19 @@ function ProductsTab({ products, variantsByProduct }) {
   )
 }
 
-function VouchersTab({ discounts, onCreate, onDelete }) {
+function VouchersTab({ discounts, quickEnabled, onQuickCreate, onCreate, onDelete }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm text-gray-600">{discounts.length} voucher code{discounts.length === 1 ? '' : 's'}</div>
-        <PrimaryButton onClick={onCreate}><Plus size={14} />Create voucher</PrimaryButton>
+        {quickEnabled ? (
+          <div className="flex gap-2">
+            <SecondaryButton onClick={onCreate}><Plus size={14} />Advanced voucher</SecondaryButton>
+            <PrimaryButton onClick={onQuickCreate}><Percent size={14} />New % discount</PrimaryButton>
+          </div>
+        ) : (
+          <PrimaryButton onClick={onCreate}><Plus size={14} />Create voucher</PrimaryButton>
+        )}
       </div>
       {discounts.length === 0 ? (
         <EmptyState icon={FileText} title="No vouchers yet" description="Create voucher codes for your customers to use at checkout." />
@@ -950,6 +982,7 @@ function VouchersTab({ discounts, onCreate, onDelete }) {
               <tr>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Code</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Value</th>
+                {quickEnabled && <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Applies to</th>}
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Used</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Expires</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -963,6 +996,7 @@ function VouchersTab({ discounts, onCreate, onDelete }) {
                   <tr key={d.id} className="border-b border-gray-50 last:border-0">
                     <td className="px-5 py-3 font-mono text-gray-900 font-medium">{d.code}</td>
                     <td className="px-5 py-3 text-gray-900">{valueStr}</td>
+                    {quickEnabled && <td className="px-5 py-3 text-gray-700">{d.entitled_product_titles || 'All products'}</td>}
                     <td className="px-5 py-3 text-right text-gray-700">{d.used_count ?? 0}{d.usage_limit ? ` / ${d.usage_limit}` : ''}</td>
                     <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(d.ends_at) || '—'}</td>
                     <td className="px-5 py-3"><Badge tone={d.status === 'active' ? 'green' : 'gray'}>{d.status || '—'}</Badge></td>
