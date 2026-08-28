@@ -1094,7 +1094,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
         reference_url: null,
         notes: null,
         tiers,
-        // lead time for the rolling ETA (sourcing + production)
+        // lead time for the rolling ETA (production + shipping)
         _leadDays: itemLeadDays(item),
         // catalogue options (for inline picker)
         available_colours: colours,

@@ -180,7 +180,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
   const pantoneMOQUnmet = item.pantone_match && item.pantone_match_moq && effectiveQty < item.pantone_match_moq
   const pantoneAvailableNow = item.pantone_match && !pantoneMOQUnmet
 
-  // ETA: lead_time_days + production_time_days + shipping extra (rolling from today)
+  // ETA: production_time_days + shipping extra (rolling from today)
   const eta = (() => {
     const days = itemLeadDays(item, shippingMethod)
     if (!days) return null
@@ -356,7 +356,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                   Estimated delivery ~{eta.days} days · {formatEtaDate(eta.date)}
                 </div>
                 <div className="text-[11px] text-emerald-700/80">
-                  Sourcing + production + {SHIPPING_LABELS[shippingMethod].label.toLowerCase()} shipping. Confirmed when you accept the quote.
+                  Production + {SHIPPING_LABELS[shippingMethod].label.toLowerCase()} shipping. Confirmed when you accept the quote.
                 </div>
               </div>
             </div>
@@ -372,7 +372,6 @@ export default function CatalogueDetail({ item, company, contact, designContext 
           {/* Spec grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <Spec label="Min order" value={item.moq_sales ? `${item.moq_sales} units` : 'No min'} />
-            <Spec label="Lead time" value={item.lead_time_days ? `${item.lead_time_days} days` : '—'} />
             <Spec label="Production" value={item.production_time_days ? `${item.production_time_days} days` : '—'} />
             <Spec label="Material" value={item.material} />
             <Spec label="Weight" value={item.weight_grams ? `${item.weight_grams} g` : null} />
@@ -633,7 +632,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                       {cost != null ? formatCents(cost) : <span className="text-gray-400 text-xs font-normal">Quote</span>}
                     </div>
                     <div className="text-[10px] text-gray-500">
-                      {days ? `+${days} days` : 'Same lead time'}
+                      {days ? `+${days} days` : 'No extra days'}
                       {method && ` · ${method}`}
                     </div>
                   </button>

@@ -8,17 +8,17 @@
 // ════════════════════════════════════════════════════════════════════════
 
 // Total lead time for a single catalogue item, in days.
-// lead_time_days (sourcing) + production_time_days (making it) + optional
-// shipping extra days for a chosen tier.
+// production_time_days (making it) + optional shipping extra days for a chosen
+// tier. The old `lead_time_days` (a separate "sourcing" field) is intentionally
+// NOT included — the real timeline is production + courier, so ETA = those two.
 export function itemLeadDays(item, shippingMethod = null) {
   if (!item) return 0
-  const lead = Number(item.lead_time_days) || 0
   const prod = Number(item.production_time_days) || 0
   let ship = 0
   if (shippingMethod && item[`${shippingMethod}_extra_days`] != null) {
     ship = Number(item[`${shippingMethod}_extra_days`]) || 0
   }
-  return lead + prod + ship
+  return prod + ship
 }
 
 // The whole order is gated by the SLOWEST item — so the order-level lead time

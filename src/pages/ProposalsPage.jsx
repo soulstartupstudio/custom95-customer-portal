@@ -246,7 +246,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
     (async () => {
       const [fRes, iRes, qRes, tRes, dRes] = await Promise.all([
         supabase.from('proposal_files').select('id, file_name, file_type, storage_url, created_at').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
-        supabase.from('proposal_requested_items').select('*, catalogue_items(main_photo_url, lead_time_days, production_time_days)').eq('proposal_id', proposal.id).order('created_at'),
+        supabase.from('proposal_requested_items').select('*, catalogue_items(main_photo_url, production_time_days)').eq('proposal_id', proposal.id).order('created_at'),
         supabase.from('quotes').select('*').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
         supabase.from('proposal_contacts').select('role, contacts(id, first_name, last_name, role, email, profile_image_url)').eq('proposal_id', proposal.id),
         supabase.from('design_tasks').select('*, proposal_requested_items!proposal_requested_item_id(reference_url, catalogue_items(main_photo_url))').eq('proposal_id', proposal.id).order('created_at'),
@@ -390,7 +390,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
   const stage = JOURNEY.find((s) => s.id === effectiveStageId) || JOURNEY[0]
   const leadContact = team.find((t) => t.role === 'lead')?.contacts
 
-  // Rolling delivery ETA — gated by the slowest item (sourcing + production).
+  // Rolling delivery ETA — gated by the slowest item (production time).
   // Prefers proposal.lead_days if the team has set it; otherwise computes from
   // the catalogue items. Rolls forward each day until the proposal converts to
   // a project (where the ETA gets locked).
@@ -400,7 +400,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
       let max = 0
       for (const it of items) {
         const ci = it.catalogue_items
-        const d = (Number(ci?.lead_time_days) || 0) + (Number(ci?.production_time_days) || 0)
+        const d = Number(ci?.production_time_days) || 0
         if (d > max) max = d
       }
       leadDays = max > 0 ? max : null
