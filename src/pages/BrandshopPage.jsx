@@ -1218,7 +1218,12 @@ function ReportsTab({ shop, orders, customers, orderItems, variantsByProduct, pr
   ]
   return (
     <div className="space-y-6">
-      <MonthlyReports shop={shop} />
+      {/* Monthly PDF reports are hidden until they actually exist: the archive
+          reads a `brandshop_reports` table that has never been created, so the
+          section could only ever promise the customer a report ("available on
+          the 1st") and then show an empty archive. Re-enable this once the
+          table and the report generator are in place. */}
+      {false && <MonthlyReports shop={shop} />}
       <div className="space-y-3">
       <p className="text-sm text-gray-600">Download CSV reports of your brandshop data.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

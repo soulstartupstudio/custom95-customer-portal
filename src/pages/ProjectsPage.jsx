@@ -10,6 +10,7 @@ import DesignDrawer from '../components/DesignDrawer'
 import ProjectReviewModal from '../components/ProjectReviewModal'
 import { fetchDesignMockupUrls } from '../lib/designThumbnails'
 import { downloadInvoicePdf } from '../lib/downloadInvoice'
+import { lineUnitCents, lineTotalCents, lineSalesBreakdown } from '../lib/lineSales'
 
 // Customer journey for projects (maps to projects.stage)
 const JOURNEY = [
@@ -171,7 +172,12 @@ function Kanban({ projects, onOpen }) {
 function ItemTrackingCard({ item, design, teamAssets = [], onOpenDesign }) {
   const hasTracking = item.tracking_customer || item.carrier_name
   const delivered = !!item.ata
-  const inTransit = ['in_transit', 'in_transit_warehouse', 'in_transit_office', 'in_transit_customer', 'shipped'].includes(item.status)
+  const inTransit = ['in_transit', 'in_transit_warehouse', 'in_transit_warehouse_ondemand', 'in_transit_office', 'in_transit_customer', 'shipped'].includes(item.status)
+  // Show what the customer actually pays (product + shipping + any setup fee),
+  // so the portal agrees with their invoice rather than the bare product price.
+  const unitAllIn = lineUnitCents(item)
+  const totalAllIn = lineTotalCents(item)
+  const salesParts = lineSalesBreakdown(item)
 
   const tone = delivered
     ? 'border-green-200 bg-green-50/40'
@@ -186,8 +192,11 @@ function ItemTrackingCard({ item, design, teamAssets = [], onOpenDesign }) {
           <div className="text-sm font-semibold text-gray-900">{item.description}</div>
           <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap">
             <span>Qty {item.quantity}</span>
-            {item.unit_sales_price_cents != null && <><span>·</span><span>{formatCents(item.unit_sales_price_cents)} each</span></>}
-            {item.total_sales_cents != null && <><span>·</span><span>{formatCents(item.total_sales_cents)} total</span></>}
+            {unitAllIn != null && <><span>·</span><span>{formatCents(unitAllIn)} each</span></>}
+            {item.total_sales_cents != null && <><span>·</span><span>{formatCents(totalAllIn)} total</span></>}
+            {salesParts?.shippingPerUnit > 0 && (
+              <><span>·</span><span className="text-gray-400">incl. {formatCents(salesParts.shippingPerUnit)} shipping</span></>
+            )}
             {item.selected_colour && <><span>·</span><span>{item.selected_colour}</span></>}
             {item.customization_notes && <><span>·</span><span className="text-gray-700 italic line-clamp-1">{item.customization_notes.split('\n')[0]}</span></>}
           </div>

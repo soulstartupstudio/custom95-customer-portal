@@ -1,6 +1,6 @@
 {
   "_doc": "Tracks the last point at which we audited the team-app repo for changes that could affect the customer-portal. Updated automatically by the sync workflow.",
-  "last_team_app_sha": "c827110",
-  "last_audit_at": "2026-08-04T11:38:11Z",
-  "notes": "Audited 047b52d..c827110 (286 commits). Portal-affecting: (1) project_line_items status now 18 granular values (in_transit_*, warehouse_*, delivered_customer) -> portal StatusBadge tones/labels + ProjectsPage inTransit check are stale (cosmetic). (2) new quote_line_item_options table (volume upsell) not shown in portal quote view. (3) new redeem_* tables with portal-read RLS, no portal UI yet. Safe/no-action: projects_proposal_id_fkey still exists (embed hint valid), potential_program dropped (portal unused), email_domain/source_design/finance/commission/scorecard migrations team-only. Nothing breaking."
+  "last_team_app_sha": "daabd93",
+  "last_audit_at": "2026-08-28T12:06:48Z",
+  "notes": "Audited 79 commits (c827110..daabd93). Applied: project lines now show all-in price incl. logistics_revenue_cents (portal understated vs invoice on 12 lines); portal sets proposals.deadline_is_fixed so customer-typed deadlines survive conversion; added the two *_ondemand line-item statuses; hid the Monthly reports section (reads brandshop_reports, which does not exist). No action: custom-request-notify is internal-only (team URL correct), one-mockup-per-design degrades cleanly, RLS perf rewrite left portal policies intact. Also reviewed daabd93 (per-company tier prices apply in the team quote builder; CatalogueLinkPanel extracted to a shared component) \u2014 team-side quoting only, no schema change, portal impact NONE."
 }

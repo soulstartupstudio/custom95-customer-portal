@@ -1262,6 +1262,10 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       occasion,
       quantity_est: totalQty || null,
       deadline_at: form.deadline_at || null,
+      // A date the customer typed here is a commitment we're being asked to meet,
+      // not the app's ASAP estimate. Without this flag conversion to a project
+      // throws it away and re-derives a date from product lead times.
+      deadline_is_fixed: !!form.deadline_at,
       brief_notes: form.brief_notes.trim(),
       shipment_type: form.shipment_type,
       delivery_notes: form.delivery_notes.trim() || null,

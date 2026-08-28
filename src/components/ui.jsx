@@ -26,6 +26,7 @@ const STATUS_TONES = {
   // Granular project line-item statuses (kept in sync with the team app's list).
   preparation: 'gray', order_placed: 'blue', ordered: 'blue',
   in_transit_warehouse: 'blue', in_transit_office: 'blue', in_transit_customer: 'blue', shipped: 'blue',
+  in_transit_warehouse_ondemand: 'blue', warehouse_delivered_ondemand: 'green',
   warehouse_awaiting: 'yellow', warehouse_delivered: 'green', warehouse_in_stock: 'green',
   at_warehouse: 'green', office_in_stock: 'green', delivered_customer: 'green',
   problem: 'red', on_hold: 'yellow',
@@ -35,8 +36,12 @@ const STATUS_TONES = {
 const STATUS_LABELS = {
   preparation: 'Preparing', order_placed: 'Ordered', ordered: 'Ordered', in_production: 'In production',
   in_transit_warehouse: 'In transit', in_transit_office: 'In transit', in_transit_customer: 'On its way to you',
+  in_transit_warehouse_ondemand: 'In transit',
   shipped: 'Shipped', warehouse_awaiting: 'Inbound to warehouse',
   warehouse_delivered: 'In stock', warehouse_in_stock: 'In stock', at_warehouse: 'In stock', office_in_stock: 'In stock',
+  // The team app's "on demand" variants mean the same thing to a customer — the
+  // on-demand distinction is internal, so don't leak it into their label.
+  warehouse_delivered_ondemand: 'In stock',
   delivered_customer: 'Delivered', delivered: 'Delivered', problem: 'Issue', on_hold: 'On hold', cancelled: 'Cancelled',
 }
 
