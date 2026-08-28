@@ -4,7 +4,7 @@ import {
   X, Package, Leaf, Search, Plus, Check, Truck, Zap, Wallet, Clock, Image as ImageIcon,
   ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star, Paintbrush,
 } from 'lucide-react'
-import { Badge, PrimaryButton, SecondaryButton, formatCents, formatDate } from './ui'
+import { Badge, PrimaryButton, SecondaryButton, formatDate } from './ui'
 import { itemLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
 import ProposalPicker from './ProposalPicker'
 
@@ -13,6 +13,11 @@ const SHIPPING_LABELS = {
   standard: { label: 'Standard', icon: Truck, tone: 'bg-blue-50 border-blue-200 text-blue-900', accent: 'text-blue-700' },
   budget: { label: 'Budget', icon: Wallet, tone: 'bg-gray-50 border-gray-200 text-gray-900', accent: 'text-gray-700' },
 }
+
+// Unit prices shown to two decimals with the Dutch comma, e.g. €16,00.
+// (formatCents rounds to whole euros, which hides the cents on per-unit prices.)
+const formatEur2 = (cents) =>
+  cents == null ? '—' : '€' + (cents / 100).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 function getTierPrice(tiers, qty) {
   if (!tiers?.length || !qty) return null
@@ -402,7 +407,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                 )}
                 {selectedCustomizations.map((c) => (
                   <span key={c.id} className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1">
-                    <Paintbrush size={11} className="text-gray-400" />{c.name}{c.surcharge_cents > 0 && <span className="text-amber-700"> +{formatCents(c.surcharge_cents)}</span>}
+                    <Paintbrush size={11} className="text-gray-400" />{c.name}{c.surcharge_cents > 0 && <span className="text-amber-700"> +{formatEur2(c.surcharge_cents)}</span>}
                   </span>
                 ))}
                 {!colour && !pantoneSelected && selectedCustomizations.length === 0 && (
@@ -544,7 +549,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                       </div>
                       <div className="text-xs mt-2 font-medium">
                         {cz.surcharge_cents > 0
-                          ? <span className="text-amber-700">+{formatCents(cz.surcharge_cents)} / unit</span>
+                          ? <span className="text-amber-700">+{formatEur2(cz.surcharge_cents)} / unit</span>
                           : <span className="text-green-700">Included</span>}
                       </div>
                     </button>
@@ -596,7 +601,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                             {t.qty_from}{t.qty_to ? `–${t.qty_to}` : '+'}
                             {inTier && <span className="ml-2 text-[10px] text-blue-700 font-semibold">CURRENT</span>}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatCents(t.sales_price_cents)}</td>
+                          <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatEur2(t.sales_price_cents)}</td>
                         </tr>
                       )
                     })}
@@ -629,7 +634,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                       {active && <Check size={12} className="text-blue-600 ml-auto" />}
                     </div>
                     <div className="text-sm font-semibold text-gray-900">
-                      {cost != null ? formatCents(cost) : <span className="text-gray-400 text-xs font-normal">Quote</span>}
+                      {cost != null ? formatEur2(cost) : <span className="text-gray-400 text-xs font-normal">Quote</span>}
                     </div>
                     <div className="text-[10px] text-gray-500">
                       {days ? `+${days} days` : 'No extra days'}
@@ -658,28 +663,28 @@ export default function CatalogueDetail({ item, company, contact, designContext 
             <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">Estimate</div>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-700">{effectiveQty} × {unitBasePrice != null ? formatCents(unitBasePrice) : 'TBD'}</span>
-                <span className="text-gray-900 font-medium">{unitBasePrice != null ? formatCents(unitBasePrice * effectiveQty) : '—'}</span>
+                <span className="text-gray-700">{effectiveQty} × {unitBasePrice != null ? formatEur2(unitBasePrice) : 'TBD'}</span>
+                <span className="text-gray-900 font-medium">{unitBasePrice != null ? formatEur2(unitBasePrice * effectiveQty) : '—'}</span>
               </div>
               {selectedCustomizations.filter((c) => c.surcharge_cents > 0).map((c) => (
                 <div key={c.id} className="flex justify-between text-xs">
-                  <span className="text-gray-600">{c.name} (+{formatCents(c.surcharge_cents)}/unit)</span>
-                  <span className="text-gray-700">+{formatCents(c.surcharge_cents * effectiveQty)}</span>
+                  <span className="text-gray-600">{c.name} (+{formatEur2(c.surcharge_cents)}/unit)</span>
+                  <span className="text-gray-700">+{formatEur2(c.surcharge_cents * effectiveQty)}</span>
                 </div>
               ))}
               {customizationSetupFee > 0 && (
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-600">Customization setup (one-time)</span>
-                  <span className="text-gray-700">+{formatCents(customizationSetupFee)}</span>
+                  <span className="text-gray-700">+{formatEur2(customizationSetupFee)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs">
                 <span className="text-gray-600">{SHIPPING_LABELS[shippingMethod].label} shipping</span>
-                <span className="text-gray-700">{shipCost != null ? formatCents(shipCost) : 'Quote'}</span>
+                <span className="text-gray-700">{shipCost != null ? formatEur2(shipCost) : 'Quote'}</span>
               </div>
               <div className="border-t border-blue-200 pt-1.5 flex justify-between text-base">
                 <span className="font-semibold text-blue-900">Total estimate</span>
-                <span className="font-bold text-blue-900">{total != null ? formatCents(total) : 'TBD'}</span>
+                <span className="font-bold text-blue-900">{total != null ? formatEur2(total) : 'TBD'}</span>
               </div>
               {eta && (
                 <div className="flex items-center gap-1.5 text-xs text-blue-800 pt-1">
@@ -699,7 +704,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
             <SecondaryButton onClick={onClose}>Close</SecondaryButton>
             <PrimaryButton onClick={handleAddClick} disabled={!canAdd || busy} className="flex-1 justify-center py-3 text-base">
               <Plus size={16} />Add to proposal
-              {total != null && <span className="ml-1 font-normal text-blue-100">· {formatCents(total)}</span>}
+              {total != null && <span className="ml-1 font-normal text-blue-100">· {formatEur2(total)}</span>}
             </PrimaryButton>
           </div>
         </div>
