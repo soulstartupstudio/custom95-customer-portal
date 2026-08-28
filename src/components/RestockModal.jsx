@@ -7,25 +7,22 @@ import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
 // Restock hand-off: the customer picked one (or a group of) warehouse items to
 // restock. Before we open the proposal wizard we ask "do you want to add other
-// items to this restock?" and list everything they've ordered before — their
-// company catalogue, plus warehouse stock that has no catalogue match (those
-// become price-TBD custom lines). The selection is then converted into wizard
-// cart items (with pricing tiers, colours, sizes, customizations) and the
-// wizard opens on the Items step so they set quantities and see prices.
+// items to this restock?" and list everything they've ordered before. The
+// selection is then converted into wizard cart items (with pricing tiers,
+// colours, sizes, customizations) and the wizard opens on the Items step.
+//
+// Everything is driven by the customer's OWN catalogue (company_catalogue),
+// which holds both catalogue-linked products and custom entries the team added
+// straight from warehouse stock — each with its own volume pricing. Warehouse
+// rows point at their entry through warehouse_inventory.company_catalogue_id.
+// We deliberately do NOT guess that link from the product name: warehouse stock
+// is the customer's own produced goods ("Zenchef Totebag"), whose names almost
+// never equal a generic catalogue name, and guessing risks pricing one product
+// off another. Unlinked stock still restocks fine — it just comes through as
+// price-TBD for the team to quote.
 
 function normName(s) {
   return (s || '').trim().toLowerCase()
-}
-
-// Match a warehouse inventory row to a catalogue item by product name.
-function matchCatalogue(inv, catalogueItems) {
-  const n = normName(inv.product_name)
-  if (!n) return null
-  return (
-    catalogueItems.find((c) => normName(c.name) === n) ||
-    catalogueItems.find((c) => normName(c.name).includes(n) || n.includes(normName(c.name))) ||
-    null
-  )
 }
 
 function minTierPrice(tiers) {
@@ -34,9 +31,8 @@ function minTierPrice(tiers) {
 }
 
 export default function RestockModal({ company, inventory, preselectedInvIds, onClose, onStart }) {
-  const [catalogueItems, setCatalogueItems] = useState([]) // company catalogue = "ordered before" rows
-  const [matchItems, setMatchItems] = useState([])         // global catalogue, used to price warehouse items
-  const [tiersByItem, setTiersByItem] = useState({})
+  const [ccEntries, setCcEntries] = useState([]) // the customer's own catalogue ("ordered before")
+  const [tiersByCc, setTiersByCc] = useState({}) // company_catalogue.id → volume tiers
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState(null)
@@ -47,112 +43,93 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const [ccRes, allRes] = await Promise.all([
-        // "Items they ordered before" = the company catalogue (the pickable rows)
-        supabase.from('company_catalogue').select('catalogue_items(*)').eq('company_id', company.id),
-        // Full portal catalogue — lets us price warehouse items that aren't in the
-        // company catalogue (match by name → real tiers instead of a TBD custom line)
-        supabase.from('catalogue_items').select('*').eq('portal_visible', true).eq('active', true).order('name').limit(200),
-      ])
+      // The customer's own catalogue: catalogue-linked entries and custom ones
+      // (warehouse products the team added), each with its company pricing.
+      const { data: ccRows } = await supabase
+        .from('company_catalogue')
+        .select('id, catalogue_item_id, custom_name, custom_photo_url, catalogue_items(*), company_catalogue_pricing_tiers(*)')
+        .eq('company_id', company.id)
       if (cancelled) return
-      const items = (ccRes.data ?? []).map((r) => r.catalogue_items).filter(Boolean)
-      const globalItems = allRes.data ?? []
-      setCatalogueItems(items)
-      setMatchItems(globalItems)
+      const rows = ccRows ?? []
+      setCcEntries(rows)
 
-      // Load tiers for anything we might price: company catalogue + global catalogue.
-      const allIds = [...new Set([...items.map((i) => i.id), ...globalItems.map((i) => i.id)])]
-      if (allIds.length) {
-        // Global tiers + company-specific overrides (overrides win per item)
-        const [globalRes, ccTiersRes] = await Promise.all([
-          supabase.from('catalogue_pricing_tiers').select('*').in('catalogue_item_id', allIds).order('qty_from'),
-          supabase.from('company_catalogue').select('id, catalogue_item_id, company_catalogue_pricing_tiers(*)')
-            .eq('company_id', company.id).in('catalogue_item_id', allIds),
-        ])
+      // Fall back to the global catalogue price only where the team hasn't set a
+      // company-specific one.
+      const needGlobal = [...new Set(rows
+        .filter((r) => r.catalogue_item_id && !(r.company_catalogue_pricing_tiers?.length))
+        .map((r) => r.catalogue_item_id))]
+      const globalByItem = {}
+      if (needGlobal.length) {
+        const { data: gt } = await supabase.from('catalogue_pricing_tiers')
+          .select('*').in('catalogue_item_id', needGlobal).order('qty_from')
         if (cancelled) return
-        const byItem = {}
-        for (const t of globalRes.data ?? []) {
+        for (const t of gt ?? []) {
           if (t.is_sample_tier) continue
-          ;(byItem[t.catalogue_item_id] = byItem[t.catalogue_item_id] || []).push(t)
+          ;(globalByItem[t.catalogue_item_id] = globalByItem[t.catalogue_item_id] || []).push(t)
         }
-        for (const row of ccTiersRes.data ?? []) {
-          const customTiers = row.company_catalogue_pricing_tiers || []
-          if (customTiers.length > 0) byItem[row.catalogue_item_id] = customTiers.sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
-        }
-        setTiersByItem(byItem)
       }
+      const byCc = {}
+      for (const r of rows) {
+        const own = (r.company_catalogue_pricing_tiers || [])
+          .filter((t) => !t.is_sample_tier)
+          .sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
+        byCc[r.id] = own.length ? own : (globalByItem[r.catalogue_item_id] ?? [])
+      }
+      setTiersByCc(byCc)
       setLoading(false)
     })()
     return () => { cancelled = true }
   }, [company.id])
 
-  // Build the pickable entries: one per catalogue item, plus one per warehouse
-  // product (deduped by name) that has no catalogue match.
+  // Build the pickable entries: one per catalogue entry (priced), plus one per
+  // warehouse product the team hasn't catalogued yet (price TBD).
   const entries = useMemo(() => {
     const list = []
-    const matchedInvIds = new Set()
-    const catByItemId = new Map() // catalogue_item_id → entry (so we can merge)
+    const claimed = new Set()
 
-    for (const cat of catalogueItems) {
-      const invRows = (inventory ?? []).filter((inv) => matchCatalogue(inv, [cat]))
-      invRows.forEach((inv) => matchedInvIds.add(inv.id))
-      const entry = {
-        key: `cat-${cat.id}`,
-        kind: 'catalogue',
-        name: cat.name,
-        category: cat.category,
-        photo: cat.main_photo_url,
+    for (const cc of ccEntries) {
+      const cat = cc.catalogue_items || null
+      const name = cat?.name || cc.custom_name || 'Item'
+      const invRows = (inventory ?? []).filter((inv) => (
+        inv.company_catalogue_id
+          ? inv.company_catalogue_id === cc.id
+          // Stock the team hasn't linked yet: exact name only, never fuzzy — a
+          // near-match would price one product off another.
+          : normName(inv.product_name) === normName(name)
+      ))
+      invRows.forEach((inv) => claimed.add(inv.id))
+      list.push({
+        key: `cc-${cc.id}`,
+        kind: 'priced',
+        name,
+        category: cat?.category || 'From your warehouse',
+        photo: cat?.main_photo_url || cc.custom_photo_url || invRows[0]?.product_photo_url || null,
         catalogueItem: cat,
+        tiers: tiersByCc[cc.id] ?? [],
         invRows,
         available: invRows.length ? invRows.reduce((s, r) => s + (r.available_qty ?? 0), 0) : null,
-      }
-      catByItemId.set(cat.id, entry)
-      list.push(entry)
+      })
     }
 
-    // Warehouse products not in the company catalogue: try the global catalogue so
-    // they come in priced. Only fall back to a custom (price-TBD) line if nothing
-    // matches anywhere.
-    const leftovers = (inventory ?? []).filter((inv) => !matchedInvIds.has(inv.id))
+    // Warehouse stock that isn't in their catalogue yet → the team prices it.
+    const leftovers = (inventory ?? []).filter((inv) => !claimed.has(inv.id))
     const byName = {}
     for (const inv of leftovers) {
       const k = normName(inv.product_name) || inv.id
       ;(byName[k] = byName[k] || []).push(inv)
     }
     for (const rows of Object.values(byName)) {
-      const avail = rows.reduce((s, r) => s + (r.available_qty ?? 0), 0)
-      const gcat = matchCatalogue(rows[0], matchItems)
-      if (gcat) {
-        const existing = catByItemId.get(gcat.id)
-        if (existing) {
-          // Same product already listed — merge stock in rather than duplicate.
-          existing.invRows = [...existing.invRows, ...rows]
-          existing.available = (existing.available ?? 0) + avail
-        } else {
-          const entry = {
-            key: `cat-${gcat.id}`,
-            kind: 'catalogue',
-            name: gcat.name,
-            category: gcat.category,
-            photo: gcat.main_photo_url || rows[0].product_photo_url,
-            catalogueItem: gcat,
-            invRows: rows,
-            available: avail,
-          }
-          catByItemId.set(gcat.id, entry)
-          list.push(entry)
-        }
-      } else {
-        list.push({
-          key: `inv-${rows[0].id}`,
-          kind: 'warehouse',
-          name: rows[0].product_name,
-          category: 'From your warehouse stock',
-          photo: rows[0].product_photo_url,
-          invRows: rows,
-          available: avail,
-        })
-      }
+      list.push({
+        key: `inv-${rows[0].id}`,
+        kind: 'warehouse',
+        name: rows[0].product_name,
+        category: 'From your warehouse stock',
+        photo: rows[0].product_photo_url,
+        catalogueItem: null,
+        tiers: [],
+        invRows: rows,
+        available: rows.reduce((s, r) => s + (r.available_qty ?? 0), 0),
+      })
     }
 
     // Surface the items that need restocking first: out of stock, then running
@@ -167,7 +144,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
     }
     list.sort((a, b) => stockRank(a) - stockRank(b) || normName(a.name).localeCompare(normName(b.name)))
     return list
-  }, [catalogueItems, matchItems, inventory])
+  }, [ccEntries, tiersByCc, inventory])
 
   // Preselect the entries covering the clicked warehouse item(s)
   useEffect(() => {
@@ -202,7 +179,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
     setStarting(true)
     setError(null)
     try {
-      const catChosen = chosen.filter((e) => e.kind === 'catalogue')
+      const catChosen = chosen.filter((e) => e.catalogueItem)
       const catIds = catChosen.map((e) => e.catalogueItem.id)
 
       let coloursByItem = {}
@@ -217,7 +194,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
       }
 
       const items = chosen.map((e) => {
-        if (e.kind === 'catalogue') {
+        if (e.catalogueItem) {
           const item = e.catalogueItem
           const colours = coloursByItem[item.id] ?? []
           const customizations = custByItem[item.id] ?? []
@@ -232,7 +209,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
             quantity: item.moq_sales || 50,
             reference_url: null,
             notes: 'Warehouse restock',
-            tiers: tiersByItem[item.id] ?? [],
+            tiers: e.tiers ?? [],
             _leadDays: itemLeadDays(item),
             available_colours: colours,
             available_sizes: sizesParsed,
@@ -245,15 +222,19 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
             customization_choice_ids: customizations.filter((c) => c.is_default).map((c) => c.id),
           }
         }
-        // Warehouse-only product → custom line, priced by the team. Still give it
-        // a starting quantity so the qty field is never blank in the wizard.
+        // A warehouse product with no catalogue item of its own. If the team has
+        // priced it in the customer's catalogue we pass those tiers along, so it
+        // shows a real price instead of TBD; otherwise the team quotes it.
         const skus = e.invRows.map((r) => r.sku).filter(Boolean)
+        const tiers = e.tiers ?? []
         return {
           type: 'custom',
           description: e.name,
-          quantity: 50,
+          category: e.category,
+          quantity: tiers[0]?.qty_from || 50,
           reference_url: null,
           notes: `Warehouse restock${skus.length ? ` (SKU ${skus.join(', ')})` : ''}`,
+          tiers,
           unit_price_cents: null,
           photo_url: e.photo || null,
         }
@@ -308,7 +289,7 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
               <div className="space-y-1.5">
                 {filtered.map((e) => {
                   const active = selected.has(e.key)
-                  const minPrice = e.kind === 'catalogue' ? minTierPrice(tiersByItem[e.catalogueItem.id]) : null
+                  const minPrice = minTierPrice(e.tiers)
                   return (
                     <button
                       key={e.key}

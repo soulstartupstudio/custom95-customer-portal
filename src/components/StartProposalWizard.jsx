@@ -380,7 +380,9 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
     )
   }
   const hasSizes = (it.available_sizes?.length ?? 0) > 0
-  const baseUnit = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
+  // Price anything that carries tiers — that includes warehouse products the
+  // team has priced in the customer's own catalogue, not just catalogue items.
+  const baseUnit = it.tiers?.length ? getTierPrice(it.tiers, it.quantity) : null
   const selectedCustomizations = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
   const surcharge = selectedCustomizations.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
   const setupFee = selectedCustomizations.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
@@ -429,7 +431,7 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
             <div className="min-w-0">
               <div className="text-sm font-medium text-gray-900 truncate">{it.description}</div>
               <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
-                <span>{it.type === 'custom' ? 'Custom' : it.category || 'Catalogue'}</span>
+                <span>{it.category || (it.type === 'custom' ? 'Custom' : 'Catalogue')}</span>
                 {pantoneSelected
                   ? <><span>·</span><span className="text-indigo-700">PMS {it.pantone_code || '—'}</span></>
                   : it.colour_choice && <><span>·</span><span>{it.colour_choice}</span></>}
@@ -1171,7 +1173,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     let total = 0
     let hasTBD = false
     for (const it of items) {
-      const base = it.type === 'catalogue' ? getTierPrice(it.tiers, it.quantity) : null
+      const base = it.tiers?.length ? getTierPrice(it.tiers, it.quantity) : null
       const selected = (it.available_customizations || []).filter((c) => (it.customization_choice_ids || []).includes(c.id))
       const surcharge = selected.reduce((s, c) => s + (c.surcharge_cents || 0), 0)
       const setupFee = selected.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
