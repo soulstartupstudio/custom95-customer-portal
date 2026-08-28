@@ -181,6 +181,9 @@ export function deriveQuoteBreakdown(quote, lineItems = []) {
     after_discount,
     subtotal: stored_subtotal,
     vat_rate: quote.vat_rate,
+    // quotes.vat_rate is stored as a fraction (0.21); expose it as a whole
+    // percent (21) for display. (Invoices still store a percentage.)
+    vat_rate_pct: quote.vat_rate != null ? Math.round(quote.vat_rate * 100) : null,
     vat: quote.vat_amount_cents || 0,
     total: quote.total_cents || 0,
   }

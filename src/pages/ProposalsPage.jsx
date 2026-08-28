@@ -720,7 +720,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
                                     {b.delivery > 0 && (
                                       <div className="text-gray-600">Delivery: <span className="text-gray-900">{formatCents(b.delivery)}</span></div>
                                     )}
-                                    <div className="text-gray-600">VAT{b.vat_rate ? ` (${b.vat_rate}%)` : ''}: <span className="text-gray-900">{formatCents(b.vat)}</span></div>
+                                    <div className="text-gray-600">VAT{b.vat_rate_pct ? ` (${b.vat_rate_pct}%)` : ''}: <span className="text-gray-900">{formatCents(b.vat)}</span></div>
                                     <div className="text-gray-700 font-semibold pt-0.5 border-t border-gray-200">Total: <span className="text-gray-900">{formatCents(b.total)}</span></div>
                                   </div>
                                 </div>

@@ -251,7 +251,7 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
                   )}
                   {b.delivery > 0 && <Row label="Delivery" value={formatCents(b.delivery)} />}
                   <div className="border-t border-gray-100 my-1" />
-                  <Row label={`VAT${b.vat_rate ? ` (${b.vat_rate}%)` : ''}`} value={formatCents(b.vat)} />
+                  <Row label={`VAT${b.vat_rate_pct ? ` (${b.vat_rate_pct}%)` : ''}`} value={formatCents(b.vat)} />
                   <div className="border-t border-gray-200 my-1" />
                   <Row label={<span className="text-base font-semibold text-gray-900">Total</span>} value={<span className="text-base font-bold text-gray-900">{formatCents(b.total)}</span>} />
                 </div>
