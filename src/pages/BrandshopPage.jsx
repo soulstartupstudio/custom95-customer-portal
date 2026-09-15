@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   Store, ExternalLink, Package, Users as UsersIcon, ShoppingBag, TrendingUp,
-  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText, Search, Percent,
+  Download, Plus, Mail, X, Check, Trash2, AlertCircle, RefreshCw, FileText, Search,
 } from 'lucide-react'
 import {
   PageHeader, EmptyState, Spinner, Badge, formatCents, formatDate, PrimaryButton, SecondaryButton,
@@ -965,7 +965,7 @@ function VouchersTab({ discounts, quickEnabled, onQuickCreate, onCreate, onDelet
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm text-gray-600">{discounts.length} voucher code{discounts.length === 1 ? '' : 's'}</div>
         {quickEnabled ? (
-          <PrimaryButton onClick={onQuickCreate}><Percent size={14} />New % discount</PrimaryButton>
+          <PrimaryButton onClick={onQuickCreate}><Plus size={14} />Add discount</PrimaryButton>
         ) : (
           <PrimaryButton onClick={onCreate}><Plus size={14} />Create voucher</PrimaryButton>
         )}
