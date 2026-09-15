@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Check, ChevronDown, ChevronUp, Copy, Package, RefreshCw, Search, Store, X } from 'lucide-react'
 import { Badge, PrimaryButton, SecondaryButton } from './ui'
+
+// Exact cents — the shared formatCents rounds to whole euros, which would turn a
+// €29,95 "one item free" amount into €30.
+const formatPrice = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(cents / 100)
 
 async function invokeShopify(body) {
   const { data, error } = await supabase.functions.invoke('shopify-sync', { body })
@@ -19,11 +23,21 @@ function randomSuffix(len = 5) {
 }
 function generateCode(percent) {
   const pct = Number.parseFloat(percent)
-  const prefix = Number.isFinite(pct) && pct > 0 ? `SAVE${Math.round(pct)}` : 'SAVE'
+  const prefix = pct === ONE_FREE ? 'FREE' : Number.isFinite(pct) && pct > 0 ? `SAVE${Math.round(pct)}` : 'SAVE'
   return `${prefix}-${randomSuffix()}`
 }
 
+// "A", "A and B", "A, B and C" — with a custom joiner for the free-item wording ("A or B").
+function joinTitles(titles, last = 'and') {
+  const t = titles.map((x) => `“${x}”`)
+  if (t.length <= 1) return t[0] || ''
+  return `${t.slice(0, -1).join(', ')} ${last} ${t[t.length - 1]}`
+}
+
 const PRESETS = [5, 10, 15, 20, 25]
+// 100% on a single product means "one item free" (a fixed amount applied once),
+// never "every unit free". It is not offered for the whole shop.
+const ONE_FREE = 100
 
 // One-screen percentage-discount builder: pick a %, pick the scope (whole
 // shop or a single product), get an auto-generated code, done. Creates the
@@ -40,14 +54,18 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   const [usageLimit, setUsageLimit] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [created, setCreated] = useState(null) // { code, percent, productTitle }
+  const [created, setCreated] = useState(null) // { code, percent, oneFree, titles, amountCents }
   const [copied, setCopied] = useState(false)
+  const [targets, setTargets] = useState(null) // { products: [{ shopify_product_id, title }], price_cents }
+  const [targetsError, setTargetsError] = useState(null)
 
   const product = products.find((p) => p.id === productId) || null
   const pct = Number.parseFloat(percent)
+  const oneFree = pct === ONE_FREE
   const pctValid = Number.isFinite(pct) && pct > 0 && pct <= 100
+  const scopeError = oneFree && scope === 'all' ? '100% (one item free) is only available for a single product.' : null
 
-  // The code follows the chosen % (SAVE15-…) until the user types their own.
+  // The code follows the chosen % (SAVE15-…, FREE-…) until the user types their own.
   const pickPercent = (v) => {
     setPercent(v)
     if (!codeEdited) setCode(generateCode(v))
@@ -57,38 +75,63 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
     setCodeEdited(false)
   }
 
+  // Ask shopify-sync which products the code will really cover — the store can
+  // link colour siblings (T-shirt Wit / Zwart) that are separate products — and
+  // the price a 100% code takes off. Best-effort: without it the summary just
+  // names the picked product and the server still resolves siblings on create.
+  useEffect(() => {
+    setTargets(null)
+    setTargetsError(null)
+    if (scope !== 'product' || !product?.shopify_product_id) return
+    let cancelled = false
+    invokeShopify({ action: 'discount_targets', brandshop_id: shop.id, entitled_product_ids: [Number(product.shopify_product_id)] })
+      .then((d) => { if (!cancelled) setTargets({ products: d?.products || [], price_cents: d?.price_cents ?? null }) })
+      .catch((e) => { if (!cancelled) setTargetsError(e.message) })
+    return () => { cancelled = true }
+  }, [scope, product?.shopify_product_id, shop.id])
+
+  const coveredTitles = targets?.products?.length ? targets.products.map((p) => p.title) : product ? [product.title] : []
+  const siblingTitles = targets?.products?.filter((p) => String(p.shopify_product_id) !== String(product?.shopify_product_id)).map((p) => p.title) || []
+
   const visibleProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
     if (!q) return products
     return products.filter((p) => (p.title || '').toLowerCase().includes(q))
   }, [products, productQuery])
 
-  const canSubmit = pctValid && !!code.trim() && !(scope === 'product' && !product)
+  const canSubmit = pctValid && !scopeError && !!code.trim() && !(scope === 'product' && !product)
 
   const submit = async () => {
     if (!canSubmit) return
     setBusy(true); setError(null)
     const finalCode = code.toUpperCase().trim()
+    const scoped = scope === 'product' && product
     try {
-      await invokeShopify({
+      const res = await invokeShopify({
         action: 'create_discount',
         brandshop_id: shop.id,
         code: finalCode,
         value_type: 'percentage',
         value: pct,
         usage_limit: usageLimit ? parseInt(usageLimit, 10) : null,
-        ends_at: endsAt || null,
+        ends_at: endsAt ? new Date(endsAt).toISOString() : null,
         customer_shopify_id: null,
         customer_email: null,
-        notes: scope === 'product' && product ? `Only for product: ${product.title}` : null,
-        ...(scope === 'product' && product
+        notes: scoped ? `Only for product: ${product.title}` : null,
+        ...(scoped
           ? {
               entitled_product_ids: [Number(product.shopify_product_id)],
               entitled_product_titles: product.title,
             }
           : {}),
       })
-      setCreated({ code: finalCode, percent: pct, productTitle: scope === 'product' ? product.title : null })
+      setCreated({
+        code: finalCode,
+        percent: pct,
+        oneFree,
+        titles: scoped ? (res?.products?.map((p) => p.title) || coveredTitles) : null,
+        amountCents: res?.amount != null ? Math.round(res.amount * 100) : targets?.price_cents ?? null,
+      })
       onCreated()
     } catch (e) {
       setError(e.message)
@@ -116,9 +159,17 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   }
 
   const summary = () => {
-    const parts = [`Customers who enter ${code.toUpperCase().trim() || '…'} at checkout get ${pctValid ? Math.round(pct * 100) / 100 : '…'}% off ${
-      scope === 'product' ? (product ? `“${product.title}”` : 'the product you pick above') : 'everything in your shop'
-    }.`]
+    const codeStr = code.toUpperCase().trim() || '…'
+    const pctStr = pctValid ? Math.round(pct * 100) / 100 : '…'
+    const what = scope === 'product' ? (product ? joinTitles(coveredTitles) : 'the product you pick above') : 'everything in your shop'
+    const parts = []
+    if (scope === 'product' && oneFree) {
+      const price = targets?.price_cents != null ? ` (${formatPrice(targets.price_cents)} off)` : ''
+      parts.push(`Customers who enter ${codeStr} at checkout get one ${product ? joinTitles(coveredTitles, 'or') : 'item'} free${price} — however many they order, only one is free.`)
+    } else {
+      parts.push(`Customers who enter ${codeStr} at checkout get ${pctStr}% off ${what}.`)
+    }
+    if (scope === 'product') parts.push('One use per customer; can’t be combined with other discounts.')
     if (endsAt) parts.push(`Valid until ${new Date(endsAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.`)
     if (usageLimit) parts.push(`Can be used ${usageLimit} time${usageLimit === '1' ? '' : 's'} in total.`)
     return parts.join(' ')
@@ -143,7 +194,10 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
             <div>
               <div className="text-base font-semibold text-gray-900">Discount created</div>
               <div className="text-sm text-gray-600 mt-0.5">
-                {created.percent}% off {created.productTitle ? `“${created.productTitle}”` : 'your whole shop'} — live in Shopify now.
+                {created.oneFree
+                  ? `One free ${joinTitles(created.titles || [], 'or')}${created.amountCents != null ? ` (${formatPrice(created.amountCents)} off)` : ''}`
+                  : `${created.percent}% off ${created.titles ? joinTitles(created.titles) : 'your whole shop'}`}
+                {' '}— live in Shopify now.
               </div>
             </div>
             <div className="flex items-center justify-center gap-2">
@@ -179,6 +233,15 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
                       {p}%
                     </button>
                   ))}
+                  <button
+                    onClick={() => pickPercent(String(ONE_FREE))}
+                    title="100% — one item free (single product only)"
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                      oneFree ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300'
+                    }`}
+                  >
+                    1 free
+                  </button>
                   <div className="relative">
                     <input
                       type="number"
@@ -192,6 +255,7 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
                   </div>
                 </div>
                 {!pctValid && percent !== '' && <p className="text-xs text-red-600">Enter a percentage between 1 and 100.</p>}
+                {scopeError && <p className="text-xs text-red-600">{scopeError}</p>}
               </div>
 
               {/* 2 — scope */}
@@ -262,6 +326,16 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
                         )
                       })}
                     </div>
+                    {product && siblingTitles.length > 0 && (
+                      <div className="px-3 py-2 border-t border-blue-100 bg-blue-50 text-xs text-blue-900">
+                        Also covers {joinTitles(siblingTitles)} — the same item in other colours.
+                      </div>
+                    )}
+                    {product && targetsError && (
+                      <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
+                        Couldn’t check for colour variants right now — the code is still created for this product.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

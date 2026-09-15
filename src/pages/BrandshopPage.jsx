@@ -991,7 +991,10 @@ function VouchersTab({ discounts, quickEnabled, onQuickCreate, onCreate, onDelet
                 const valueStr = d.value_type === 'percentage' ? `${d.value}%` : formatCents(Math.round(parseFloat(d.value) * 100))
                 return (
                   <tr key={d.id} className="border-b border-gray-50 last:border-0">
-                    <td className="px-5 py-3 font-mono text-gray-900 font-medium">{d.code}</td>
+                    <td className="px-5 py-3 font-mono text-gray-900 font-medium">
+                      {d.code}
+                      {quickEnabled && d.notes && <div className="text-[11px] text-gray-500 font-sans font-normal mt-0.5">{d.notes}</div>}
+                    </td>
                     <td className="px-5 py-3 text-gray-900">{valueStr}</td>
                     {quickEnabled && <td className="px-5 py-3 text-gray-700">{d.entitled_product_titles || 'All products'}</td>}
                     <td className="px-5 py-3 text-right text-gray-700">{d.used_count ?? 0}{d.usage_limit ? ` / ${d.usage_limit}` : ''}</td>
