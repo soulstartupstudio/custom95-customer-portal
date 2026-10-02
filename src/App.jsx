@@ -2,6 +2,7 @@ import { useState, useEffect, Component } from 'react'
 import { supabase } from './lib/supabase'
 import Auth from './components/Auth'
 import Layout from './components/Layout'
+import PlanActivation from './pages/PlanActivation'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -28,7 +29,20 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Public, login-free: the Plan activation page (/start/<token>), reached from the AM's email.
+function publicRoute() {
+  const m = window.location.pathname.match(/^\/start\/([0-9a-f-]{36})\/?$/i)
+  if (m) return <PlanActivation token={m[1]} preview={new URLSearchParams(window.location.search).get('preview') === '1'} />
+  return null
+}
+
 export default function App() {
+  const publicPage = publicRoute()
+  if (publicPage) return publicPage
+  return <PortalApp />
+}
+
+function PortalApp() {
   const [session, setSession] = useState(null)
   const [contact, setContact] = useState(null)
   const [company, setCompany] = useState(null)
