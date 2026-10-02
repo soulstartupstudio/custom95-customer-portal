@@ -265,6 +265,12 @@ function RequestCard({ request, items, onClick }) {
   )
 }
 
+// A return shipment (booked with "Add a return shipment" in the request wizard) is an
+// inbound order the team creates together with the outbound one. The client view has
+// no dedicated column for it yet, so it is recognised by the note the team app writes.
+const isReturnOrder = (o) => !!o?.return_of_order_id || /^Return of shipment #/i.test(o?.notes || '')
+const orderTypeLabel = (o) => (isReturnOrder(o) ? 'return' : o?.order_type)
+
 // --- Shipment detail drawer ---
 function ShipmentDetail({ order, address, items, inventoryById, onClose }) {
   return (
@@ -273,7 +279,7 @@ function ShipmentDetail({ order, address, items, inventoryById, onClose }) {
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <div className="text-xs text-gray-500">Shipment #{order.order_number}</div>
-            <h2 className="text-lg font-semibold text-gray-900">{order.order_type || 'Shipment'}</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{orderTypeLabel(order) || 'Shipment'}</h2>
           </div>
           <div className="flex items-center gap-2">
             {order.tracking_url && (
@@ -580,7 +586,7 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
     const ms = shipmentMovements[o.id] ?? []
     return {
       order_number: o.order_number,
-      order_type: o.order_type,
+      order_type: orderTypeLabel(o),
       status: o.status,
       destination: addr ? (addr.label || [addr.city, addr.country].filter(Boolean).join(', ')) : '',
       items: ms.length,
@@ -821,7 +827,7 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
                     return (
                       <tr key={o.id} onClick={() => setSelectedShipment({ order: o, address: addr, items: ms })} className="border-b border-gray-50 last:border-0 cursor-pointer hover:bg-blue-50/30">
                         <td className="px-5 py-3 text-gray-500">#{o.order_number}</td>
-                        <td className="px-5 py-3 text-gray-900">{o.order_type}</td>
+                        <td className="px-5 py-3 text-gray-900">{orderTypeLabel(o)}</td>
                         <td className="px-5 py-3 text-gray-700 text-xs truncate max-w-[200px]">
                           {addr ? (addr.label || [addr.city, addr.country].filter(Boolean).join(', ')) : '—'}
                         </td>
