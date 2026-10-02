@@ -157,7 +157,7 @@ export default function PlanActivation({ token, preview = false }) {
                 </li>
               ))}
             </ol>
-            <a href="/" className="mt-8 w-full inline-flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white rounded-xl px-5 py-3.5 font-semibold">
+            <a href="/?tab=plan" className="mt-8 w-full inline-flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white rounded-xl px-5 py-3.5 font-semibold">
               Continue to onboarding <ArrowRight size={18} />
             </a>
             <p className="text-xs text-gray-400 mt-3 text-center">

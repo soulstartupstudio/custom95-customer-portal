@@ -4,6 +4,8 @@ import { FileText, Receipt, Palette, FolderKanban, ArrowRight, Sparkles, Mail, P
 import { Card, Badge, StatusBadge, Spinner, formatCents, formatDate, PrimaryButton } from '../components/ui'
 import LoyaltyCard from '../components/LoyaltyCard'
 import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
+import GettingStarted from '../components/GettingStarted'
+import { fetchPortalPlan } from '../lib/portalPlan'
 import { hasPartnerPlan, planLabel } from '../lib/planBenefits'
 
 const PLAN_LABELS = { starter: 'Starter', growth: 'Growth', scale: 'Scale', enterprise: 'Enterprise' }
@@ -49,6 +51,14 @@ function ActivityRow({ type, title, subtitle, status, date, onClick }) {
 }
 
 export default function DashboardPage({ session, contact, company, navigate }) {
+  // A new Plan customer's onboarding progress (Getting Started), shown until it's complete.
+  const [plan, setPlan] = useState(null)
+  useEffect(() => {
+    if (!hasPartnerPlan(company)) return
+    let cancelled = false
+    fetchPortalPlan().then(d => !cancelled && setPlan(d)).catch(() => {})
+    return () => { cancelled = true }
+  }, [company?.id, company?.plan_tier])
   const [stats, setStats] = useState({ proposals: 0, quotes: 0, designs: 0, projects: 0 })
   const [activity, setActivity] = useState([])
   const [am, setAm] = useState(null)
@@ -143,6 +153,7 @@ export default function DashboardPage({ session, contact, company, navigate }) {
       </div>
 
       {!hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" />}
+      {plan?.onboarding && <GettingStarted onboarding={plan.onboarding} navigate={navigate} />}
 
       <LoyaltyCard company={company} onUseCredit={() => navigate('proposals')} />
 

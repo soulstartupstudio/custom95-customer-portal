@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
-  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X
+  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X, Handshake
 } from 'lucide-react'
 import DashboardPage from '../pages/DashboardPage'
 import SettingsPage from '../pages/SettingsPage'
@@ -16,6 +16,8 @@ import CataloguePage from '../pages/CataloguePage'
 import ContactsPage from '../pages/ContactsPage'
 import BrandshopPage from '../pages/BrandshopPage'
 import BrandPage from '../pages/BrandPage'
+import YourPlanPage from '../pages/YourPlanPage'
+import MerchAuditPage from '../pages/MerchAuditPage'
 import StartProposalWizard from './StartProposalWizard'
 import WhatsAppButton from './WhatsAppButton'
 import ProposalDraftWidget from './ProposalDraftWidget'
@@ -23,6 +25,7 @@ import { readProposalDraft, clearProposalDraft } from '../lib/proposalDraft'
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'plan', label: 'Your Plan', icon: Handshake },
   { id: 'proposals', label: 'Proposals', icon: FileText },
   { id: 'quotes', label: 'Quotes', icon: Receipt },
   { id: 'designs', label: 'Designs', icon: Palette },
@@ -110,6 +113,9 @@ export default function Layout({ session, contact, company }) {
       case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} onStartProposalWithItems={openWizardWithItems} />
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
+      case 'plan': return <YourPlanPage key={refreshKey} company={company} navigate={setActiveTab} />
+      // The Merch Audit has no nav entry of its own — it's reached from Your Plan / Getting Started.
+      case 'audit': return <MerchAuditPage company={company} navigate={setActiveTab} />
       default: return null
     }
   }

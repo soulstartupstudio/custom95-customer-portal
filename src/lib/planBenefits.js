@@ -11,38 +11,37 @@ export const PLAN_LABELS = {
   enterprise: 'Enterprise',
 }
 
-// Per-tier headline used on the upsell cards (price is monthly, ex VAT).
+// Per-tier headline used on the upsell cards (price is monthly, ex VAT). Custom95 SLA v20, 4.2.
 export const PLAN_TIERS = {
-  starter:    { label: 'Starter',    price: '€95',    priceCents: 9500,   tagline: 'Get started with warehousing & fulfilment.' },
-  growth:     { label: 'Growth',     price: '€295',   priceCents: 29500,  tagline: 'Scale up with cost insights & a merch audit.', popular: true },
-  scale:      { label: 'Scale',      price: '€995',   priceCents: 99500,  tagline: 'Pan-EU warehousing, custom packaging & collections.' },
-  enterprise: { label: 'Enterprise', price: '€1,995', priceCents: 199500, tagline: 'Everything, fully custom, no brandshop fees.' },
+  starter:    { label: 'Starter',    price: '€95',    priceCents: 9500,   tagline: 'For recurring / repeat purchasing.' },
+  growth:     { label: 'Growth',     price: '€295',   priceCents: 29500,  tagline: 'For regular volume, with design included.', popular: true },
+  scale:      { label: 'Scale',      price: '€995',   priceCents: 99500,  tagline: 'For high volume — Brandshop included.' },
+  enterprise: { label: 'Enterprise', price: '€1,995', priceCents: 199500, tagline: 'Strategic and international, unlimited design.' },
 }
 
 // A few headline perks per tier for the compact cards.
 export const PLAN_HIGHLIGHTS = {
-  starter:    ['1 pallet included', '5 warehouse orders / mo', '5 free samples / year', 'Free standard delivery'],
-  growth:     ['3 pallets included', '30 warehouse orders / mo', 'Team cost control & insights', 'Merch audit included'],
-  scale:      ['10 pallets included', '100 warehouse orders / mo', 'Pan-EU warehousing', '2 collections / year + custom packaging'],
-  enterprise: ['15 pallets included', '150 warehouse orders / mo', 'Fully custom packaging', 'No brandshop setup or monthly fee'],
+  starter:    ['1 pallet included', '10 orders / month included', 'Annual merch audit', '5 free samples / year'],
+  growth:     ['3 pallets included', '30 orders / month included', 'Design: 1 collection', '10 free samples / year'],
+  scale:      ['10 pallets included', '100 orders / month included', 'Design: 2 collections', 'Brandshop included, free setup'],
+  enterprise: ['15 pallets included', '150 orders / month included', 'Unlimited design + roadmap', 'Brandshop included, free setup'],
 }
 
-// Full benefit matrix (one row per benefit) for the "compare plans" table.
+// Full benefit matrix for the "compare plans" table — Custom95 SLA v20, Section 4.2.
 export const PLAN_BENEFITS = [
-  { label: 'Monthly fee', values: { starter: '€95', growth: '€295', scale: '€995', enterprise: '€1,995' } },
-  { label: 'Included pallets', values: { starter: '1', growth: '3', scale: '10', enterprise: '15' }, over: 'Over: €55 / extra pallet' },
-  { label: 'Warehouse orders / month (pick & pack)', values: { starter: '5', growth: '30', scale: '100', enterprise: '150' }, over: 'Over: €4.50 / extra order' },
-  { label: 'Free sample products / year', values: { starter: '5', growth: '10', scale: 'Unlimited', enterprise: 'Unlimited' } },
-  { label: 'Standard delivery', values: { starter: 'Free (€29.95)', growth: 'Free (€29.95)', scale: 'Free (€29.95)', enterprise: 'Free (€29.95)' } },
-  { label: 'Team cost control & insights in portal', values: { starter: 'No', growth: 'Yes', scale: 'Yes', enterprise: 'Yes' } },
-  { label: 'Pan-EU warehousing', values: { starter: 'No', growth: 'No', scale: 'Yes', enterprise: 'Yes' } },
-  { label: 'Merch audit', values: { starter: '—', growth: 'Included', scale: 'Included', enterprise: 'Included' } },
-  { label: 'Collections / year', values: { starter: '—', growth: '—', scale: '2', enterprise: '2' } },
-  { label: 'Packaging', values: { starter: 'Standard', growth: 'Standard', scale: 'Custom', enterprise: 'Fully custom' } },
-  { label: 'Brandshop setup & fee', values: { starter: 'Std setup + €1950 + €195/mo', growth: 'Std setup + €195/mo', scale: 'No setup fee (worth €1,950) + €195/mo', enterprise: 'No setup fee, no monthly fee' } },
-  { label: 'Merch calendar session', values: { starter: '—', growth: '—', scale: '—', enterprise: 'Included' } },
-  { label: 'Production', values: { starter: 'Priority', growth: 'Priority', scale: 'Priority', enterprise: 'Priority' } },
-  { label: 'Payment', values: { starter: 'By invoice on term', growth: 'By invoice on term', scale: 'By invoice on term', enterprise: 'By invoice on term' } },
+  { label: 'Monthly commitment', values: { starter: '€95', growth: '€295', scale: '€995', enterprise: '€1,995' } },
+  { label: 'Best for', values: { starter: 'Recurring / repeat purchasing', growth: 'Regular volume', scale: 'High volume', enterprise: 'Strategic, international' } },
+  { label: 'Pallets included', values: { starter: '1', growth: '3', scale: '10', enterprise: '15' }, over: 'Extra pallet: €55 / month' },
+  { label: 'Orders included / month (B2B or B2C)', values: { starter: '10', growth: '30', scale: '100', enterprise: '150' }, over: 'Overage: €4.50 / order' },
+  { label: 'Merch audit', values: { starter: 'Annual starting point', growth: 'Annual starting point', scale: 'Annual starting point', enterprise: 'Annual starting point' } },
+  { label: 'Catalogue discount', values: { starter: '5% (catalogue items)', growth: '5% (catalogue items)', scale: '5% (catalogue items)', enterprise: '5% (catalogue items)' } },
+  { label: 'Free samples', values: { starter: '5 / year', growth: '10 / year', scale: '1 per item in every project', enterprise: '1 per item in every project' } },
+  { label: 'Design', values: { starter: 'Per project', growth: '1 collection', scale: '2 collections', enterprise: 'Unlimited + roadmap' } },
+  { label: 'Brandshop', values: { starter: '+ €95 / mo, €1,995 setup', growth: '+ €95 / mo, €995 setup', scale: 'Included, free setup', enterprise: 'Included, free setup' } },
+  { label: 'Quarterly Business Review', values: { starter: 'Included', growth: 'Included', scale: 'Included', enterprise: 'Included' } },
+  { label: 'Packaging', values: { starter: 'At cost', growth: 'At cost', scale: 'At cost', enterprise: 'At cost' } },
+  { label: 'Shipping', values: { starter: 'Separate', growth: 'Separate', scale: 'Separate', enterprise: 'Separate' } },
+  { label: 'Inbound', values: { starter: 'No charge', growth: 'No charge', scale: 'No charge', enterprise: 'No charge' } },
 ]
 
 // A company is a "partner" when it's on any paid tier. Anything else — no plan,
