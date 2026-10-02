@@ -35,32 +35,40 @@ export const MERCH_AUDIT = [
       { key: 'doesnt', label: "What doesn't work?", type: 'textarea' },
     ],
   },
+  // The moments, in Custom95's five groups. Each: which apply, then details & dates.
   {
-    key: 'fixed', title: 'Fixed yearly moments', intro: 'Moments that come back every year.',
+    key: 'acquisition', title: 'Acquisition moments', intro: 'Moments where you want to turn someone into a customer.',
     fields: [
-      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Christmas / end of year', 'Company anniversary', 'Events', 'Trade shows', 'Company days', 'Seasonal moments'] },
-      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. trade show in March (Berlin, ±300 visitors), Christmas gift for 120 staff…' },
+      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Outreach', 'Events', 'Pitches', 'Meetings', 'Proposals', 'Closing'] },
+      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. trade show in Berlin in March (±300 visitors), a gift with every signed deal…' },
     ],
   },
   {
-    key: 'campaigns', title: 'Campaigns & launches',
+    key: 'customer', title: 'Customer moments', intro: 'Moments within your customer relationships.',
     fields: [
-      { key: 'which', label: 'Coming up?', type: 'chips', options: ['Product launches', 'Campaigns', 'Rebrand', 'Openings', 'Collaborations'] },
-      { key: 'details', label: 'Details & dates', type: 'textarea' },
+      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Onboarding', 'Launches', 'Campaigns', "QBR's", 'Milestones', 'Gifting'] },
+      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. a welcome box for every new customer, a product launch in Q2…' },
     ],
   },
   {
-    key: 'people', title: 'People moments',
+    key: 'loyalty', title: 'Loyalty moments', intro: 'Moments that take a customer from customer to fan to ambassador.',
     fields: [
-      { key: 'which', label: 'Which do you celebrate?', type: 'chips', options: ['Employee onboarding', 'Work anniversaries', 'Team days', 'Leave / parental leave', 'Goodbye gifts'] },
-      { key: 'details', label: 'Details', type: 'textarea', placeholder: 'E.g. ±40 new hires a year, team day in June…' },
+      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Anniversaries', 'VIP gifting', 'Referrals', 'Surprises', 'Exclusive drops'] },
+      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. a gift on the 1-year customer anniversary, a limited drop for top customers…' },
     ],
   },
   {
-    key: 'relationships', title: 'Relationship moments',
+    key: 'people', title: 'People moments', intro: 'The employee lifecycle.',
     fields: [
-      { key: 'which', label: 'Where does merch help your relationships?', type: 'chips', options: ['Customer visits', 'Events', 'Partners', 'VIPs', 'Press', 'Prospects'] },
-      { key: 'details', label: 'Details', type: 'textarea' },
+      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Recruitment', 'Onboarding', 'Promotion', 'Milestones', 'Celebrations', 'Team events'] },
+      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. ±40 new hires a year, team day in June, 5-year work anniversaries…' },
+    ],
+  },
+  {
+    key: 'culture', title: 'Culture & community moments', intro: 'Moments that make people feel part of something bigger.',
+    fields: [
+      { key: 'which', label: 'Which apply to you?', type: 'chips', options: ['Company events', 'Communities', 'Conferences', 'Retreats', 'Sponsorships', 'Launches'] },
+      { key: 'details', label: 'Details & dates', type: 'textarea', placeholder: 'E.g. yearly company retreat in September, a running community, sponsoring a local club…' },
     ],
   },
   {
