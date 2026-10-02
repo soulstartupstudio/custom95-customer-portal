@@ -169,17 +169,17 @@ export default function PlanActivation({ token, preview = false }) {
     )
   }
 
+  const months = (n) => `${n} month${n === 1 ? '' : 's'}`
+  const notice = p.notice_period_months ?? 1
   const keyRows = [
-    [Clock, 'Response time', p.response_time || '—'],
-    [Handshake, 'Projects', 'Every production project is approved by you before production starts'],
-    [CreditCard, 'Payment', `${eur(p.fee_cents)} / ${per(p.billing_frequency)} Plan fee · projects on ${p.payment_terms_days ?? 30} days`],
-    [CalendarDays, 'Contract term', `${p.minimum_term_months ?? 12} months, then ${p.notice_period_months ?? 1} month${(p.notice_period_months ?? 1) === 1 ? '' : 's'} notice`],
+    [Clock, 'Support', `${p.response_time || 'Within 4 business hours'} · Monday–Friday, 09:00–17:30 CET`],
+    [CreditCard, 'Payment', `${eur(p.fee_cents)} / ${per(p.billing_frequency)}, invoiced in advance · invoices payable within ${p.payment_terms_days ?? 14} days`],
+    [CalendarDays, 'Contract term', `${months(p.minimum_term_months ?? 12)}${p.trial_months ? ` — the first ${months(p.trial_months)} are a trial (${months(notice)} notice)` : ''}`],
+    [Handshake, 'Renewal', p.renewal_months ? `Renews for ${months(p.renewal_months)} unless cancelled ${months(notice)} before the end` : 'No automatic renewal'],
+    ...(p.brandshop_addon ? [[Sparkles, 'Brandshop', `Add-on included — ${p.brandshop_line}`]] : []),
   ]
-  const details = [
-    ['Projects', 'Before production starts you always approve the product, quantities, pricing, artwork and production details. Nothing is produced without your go-ahead.'],
-    ['Lead times', 'Lead times depend on the product, production country, decoration method, quantity and shipping method. The expected delivery date is confirmed per project.'],
-    ['Responsibilities', 'Custom95 manages sourcing, supplier communication, production, project coordination, quality control and logistics coordination. You approve artwork, specifications, quantities, pricing and the final production go-ahead.'],
-  ]
+  // Plain-English points that belong to the agreement version (edited with it in the team app).
+  const details = (d.agreement?.summary || []).map(x => [x.title, x.body])
   const agreementUnavailable = d.state === 'agreement_unavailable'
 
   return (
