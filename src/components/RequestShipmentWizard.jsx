@@ -18,18 +18,6 @@ const STEPS = [
 
 const formatEur = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
 
-// ---------- Return shipment (per-company rollout) ----------
-// Lets the customer book a return pick-up together with the outbound shipment
-// (address step), currently only for Qonto. A company qualifies when its name
-// contains one of these entries (keep them lowercase); add entries to roll the
-// option out to other customers.
-const RETURN_SHIPMENT_COMPANIES = ['qonto']
-
-function hasReturnShipments(company) {
-  const name = (company?.name || '').toLowerCase()
-  return RETURN_SHIPMENT_COMPANIES.some((needle) => name.includes(needle))
-}
-
 const hasFullContact = (a) => !!a?.contact_name?.trim() && !!a?.contact_phone?.trim() && !!a?.contact_email?.trim()
 const addressTitle = (a) => a.label || `${a.street} ${a.house_number || ''}`
 const addressLine = (a) => [[a.street, a.house_number].filter(Boolean).join(' '), [a.postal_code, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ')
@@ -339,14 +327,12 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   // Show prices incl. VAT to the customer by default (most relevant for them)
   const [vatInclusive, setVatInclusive] = useState(true)
   const [shipConfig, setShipConfig] = useState(null) // editable boxes / services / country rates
-  // Optional return pick-up (only offered to RETURN_SHIPMENT_COMPANIES)
-  const returnAvailable = hasReturnShipments(company)
-  const [returnChecked, setReturnChecked] = useState(false)
+  // Optional return pick-up, booked together with the outbound shipment (address step)
+  const [returnEnabled, setReturnEnabled] = useState(false)
   const [returnDate, setReturnDate] = useState('')
   const [returnSamePlace, setReturnSamePlace] = useState(true) // pick up where we delivered
   const [returnAddress, setReturnAddress] = useState(null) // other pick-up address (full row)
   const [returnPopupOpen, setReturnPopupOpen] = useState(false)
-  const returnEnabled = returnAvailable && returnChecked
   // Ship-out date is chosen a step later, so the order check lives there.
   const returnBeforeShipOut = returnEnabled && !shipAsap && !!shipDate && !!returnDate && returnDate < shipDate
 
@@ -683,74 +669,72 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
               <p className="text-xs text-gray-500">Pick the delivery destination. It needs a recipient we can contact if the carrier has questions.</p>
               <AddressPicker company={company} selectedIds={addressIds} onChange={setAddressIds} />
 
-              {returnAvailable && (
-                <div className={`rounded-lg border transition-colors ${returnChecked ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'}`}>
-                  <label className="flex items-start gap-3 px-4 py-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={returnChecked}
-                      onChange={(e) => setReturnChecked(e.target.checked)}
-                      className="accent-blue-600 mt-0.5"
-                    />
+              <div className={`rounded-lg border transition-colors ${returnEnabled ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'}`}>
+                <label className="flex items-start gap-3 px-4 py-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={returnEnabled}
+                    onChange={(e) => setReturnEnabled(e.target.checked)}
+                    className="accent-blue-600 mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</div>
+                    <div className="text-xs text-gray-500">We'll collect the items again and bring them back to the warehouse.</div>
+                  </div>
+                </label>
+
+                {returnEnabled && (
+                  <div className="px-4 pb-4 pt-3 border-t border-blue-200 space-y-3">
                     <div>
-                      <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</div>
-                      <div className="text-xs text-gray-500">We'll collect the items again and bring them back to the warehouse.</div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                        <CalendarIcon size={12} />Pick-up date
+                      </label>
+                      <input
+                        type="date"
+                        value={returnDate}
+                        onChange={(e) => setReturnDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full sm:w-56 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
                     </div>
-                  </label>
 
-                  {returnChecked && (
-                    <div className="px-4 pb-4 pt-3 border-t border-blue-200 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
-                          <CalendarIcon size={12} />Pick-up date
-                        </label>
-                        <input
-                          type="date"
-                          value={returnDate}
-                          onChange={(e) => setReturnDate(e.target.value)}
-                          min={new Date().toISOString().split('T')[0]}
-                          className="w-full sm:w-56 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        />
+                        <div className="text-sm font-medium text-gray-900">Pick up at the delivery address</div>
+                        <div className="text-xs text-gray-500">Switch off to collect the return from a different address.</div>
                       </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={returnSamePlace}
+                        aria-label="Pick up at the delivery address"
+                        // Switching off only takes effect once an address is confirmed in the popup.
+                        onClick={() => (returnSamePlace ? setReturnPopupOpen(true) : setReturnSamePlace(true))}
+                        className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${returnSamePlace ? 'bg-blue-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${returnSamePlace ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
 
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">Pick up at the delivery address</div>
-                          <div className="text-xs text-gray-500">Switch off to collect the return from a different address.</div>
+                    {!returnSamePlace && returnAddress && (
+                      <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <div className="min-w-0 text-xs">
+                          <div className="font-medium text-gray-900 flex items-center gap-1"><MapPin size={11} className="text-gray-400" />{addressTitle(returnAddress)}</div>
+                          <div className="text-gray-600">{addressLine(returnAddress)}</div>
+                          <div className="text-gray-500 mt-0.5">{[returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ')}</div>
                         </div>
                         <button
                           type="button"
-                          role="switch"
-                          aria-checked={returnSamePlace}
-                          aria-label="Pick up at the delivery address"
-                          // Switching off only takes effect once an address is confirmed in the popup.
-                          onClick={() => (returnSamePlace ? setReturnPopupOpen(true) : setReturnSamePlace(true))}
-                          className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${returnSamePlace ? 'bg-blue-600' : 'bg-gray-300'}`}
+                          onClick={() => setReturnPopupOpen(true)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 flex-shrink-0"
                         >
-                          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${returnSamePlace ? 'translate-x-4' : ''}`} />
+                          <Pencil size={11} />Change
                         </button>
                       </div>
-
-                      {!returnSamePlace && returnAddress && (
-                        <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                          <div className="min-w-0 text-xs">
-                            <div className="font-medium text-gray-900 flex items-center gap-1"><MapPin size={11} className="text-gray-400" />{addressTitle(returnAddress)}</div>
-                            <div className="text-gray-600">{addressLine(returnAddress)}</div>
-                            <div className="text-gray-500 mt-0.5">{[returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ')}</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setReturnPopupOpen(true)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 flex-shrink-0"
-                          >
-                            <Pencil size={11} />Change
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
