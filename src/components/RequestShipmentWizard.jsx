@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import {
   X, ChevronLeft, ChevronRight, Check, Package, MapPin, Plus, Truck,
   Calendar as CalendarIcon, Zap, Search, Trash2, AlertCircle, Mail, Phone, User, Pencil,
-  Leaf, Wallet, Clock,
+  Leaf, Wallet, Clock, Undo2,
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatDate } from './ui'
 import AddressEditor from './AddressEditor'
@@ -17,6 +17,22 @@ const STEPS = [
 ]
 
 const formatEur = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
+
+// ---------- Return shipment (per-company rollout) ----------
+// Lets the customer book a return pick-up together with the outbound shipment
+// (address step), currently only for Qonto. A company qualifies when its name
+// contains one of these entries (keep them lowercase); add entries to roll the
+// option out to other customers.
+const RETURN_SHIPMENT_COMPANIES = ['qonto']
+
+function hasReturnShipments(company) {
+  const name = (company?.name || '').toLowerCase()
+  return RETURN_SHIPMENT_COMPANIES.some((needle) => name.includes(needle))
+}
+
+const hasFullContact = (a) => !!a?.contact_name?.trim() && !!a?.contact_phone?.trim() && !!a?.contact_email?.trim()
+const addressTitle = (a) => a.label || `${a.street} ${a.house_number || ''}`
+const addressLine = (a) => [[a.street, a.house_number].filter(Boolean).join(' '), [a.postal_code, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ')
 
 // --- Item picker ---
 function ItemPicker({ company, onAdd, selectedByInventoryId }) {
@@ -108,7 +124,7 @@ function ItemPicker({ company, onAdd, selectedByInventoryId }) {
 }
 
 // --- Address picker ---
-function AddressPicker({ company, selectedIds, onChange }) {
+function AddressPicker({ company, selectedIds, onChange, editTitle = 'Complete recipient contact' }) {
   const [addresses, setAddresses] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null) // address id being edited, or 'new'
@@ -180,7 +196,7 @@ function AddressPicker({ company, selectedIds, onChange }) {
                   company={company}
                   address={a}
                   mode="shipment"
-                  title="Complete recipient contact"
+                  title={editTitle}
                   onSaved={handleSaved}
                   onCancel={() => setEditingId(null)}
                 />
@@ -259,6 +275,54 @@ function AddressPicker({ company, selectedIds, onChange }) {
   )
 }
 
+// --- Return pick-up address popup ---
+// Small dialog on top of the wizard: the saved-address list (with search, edit
+// and add-new) is too much to unfold inside the address step itself.
+function ReturnPickupPopup({ company, initialId, onConfirm, onClose }) {
+  const [selectedIds, setSelectedIds] = useState(initialId ? [initialId] : [])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const confirm = async () => {
+    setBusy(true); setError(null)
+    // Re-read the row so contact details edited inside the picker are included.
+    const { data, error: err } = await supabase.from('addresses').select('*').eq('id', selectedIds[0]).single()
+    setBusy(false)
+    if (err) { setError(err.message); return }
+    if (!hasFullContact(data)) { setError('Add a contact name, phone and email for this address so the carrier can arrange the pick-up.'); return }
+    onConfirm(data)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-t-xl sm:rounded-xl shadow-xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Undo2 size={15} className="text-blue-600" />
+            <h3 className="text-sm font-semibold text-gray-900">Pick-up address for the return</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <AddressPicker
+            company={company}
+            selectedIds={selectedIds}
+            onChange={(ids) => { setSelectedIds(ids); setError(null) }}
+            editTitle="Complete pick-up contact"
+          />
+        </div>
+        {error && <div className="mx-4 mb-2 text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</div>}
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+          <SecondaryButton onClick={onClose} disabled={busy}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={confirm} disabled={busy || selectedIds.length === 0}>
+            {busy ? 'Checking…' : 'Use this address'}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- MAIN WIZARD ---
 export default function RequestShipmentWizard({ company, contact, onClose, onCreated }) {
   const [step, setStep] = useState(0)
@@ -275,6 +339,16 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   // Show prices incl. VAT to the customer by default (most relevant for them)
   const [vatInclusive, setVatInclusive] = useState(true)
   const [shipConfig, setShipConfig] = useState(null) // editable boxes / services / country rates
+  // Optional return pick-up (only offered to RETURN_SHIPMENT_COMPANIES)
+  const returnAvailable = hasReturnShipments(company)
+  const [returnChecked, setReturnChecked] = useState(false)
+  const [returnDate, setReturnDate] = useState('')
+  const [returnSamePlace, setReturnSamePlace] = useState(true) // pick up where we delivered
+  const [returnAddress, setReturnAddress] = useState(null) // other pick-up address (full row)
+  const [returnPopupOpen, setReturnPopupOpen] = useState(false)
+  const returnEnabled = returnAvailable && returnChecked
+  // Ship-out date is chosen a step later, so the order check lives there.
+  const returnBeforeShipOut = returnEnabled && !shipAsap && !!shipDate && !!returnDate && returnDate < shipDate
 
   // Load the editable shipping config (set up by the team in Warehouse → Shipment rates).
   useEffect(() => {
@@ -326,13 +400,14 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     if (step === 0) return items.length > 0
     if (step === 1) {
       if (addressIds.length === 0) return false
+      if (returnEnabled && (!returnDate || (!returnSamePlace && !returnAddress))) return false
       // Every selected destination needs name + phone + email so the carrier
       // can call AND email the recipient when the parcel is on the way.
       return addresses.length === addressIds.length && addresses.every((a) =>
         !!a.contact_name?.trim() && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
       )
     }
-    if (step === 2) return allAddressesPriced && (shipAsap || !!shipDate)
+    if (step === 2) return allAddressesPriced && (shipAsap || !!shipDate) && !returnBeforeShipOut
     return true
   }
 
@@ -410,6 +485,30 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const submit = async () => {
     setSubmitting(true); setError(null)
     const quotedAt = new Date().toISOString()
+    // The return pick-up also travels in the notes, so it stays readable on the
+    // request and on the shipment the team creates from it.
+    const returnNote = returnEnabled
+      ? [
+          `RETURN SHIPMENT — pick-up date: ${returnDate}`,
+          returnSamePlace || !returnAddress
+            ? 'Pick-up from: same as delivery address'
+            : `Pick-up from: ${[returnAddress.label, addressLine(returnAddress)].filter(Boolean).join(' — ')}\nPick-up contact: ${[returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ')}`,
+        ].join('\n')
+      : null
+    const fullNotes = [returnNote, notes.trim()].filter(Boolean).join('\n\n') || null
+    // Structured copy for the team app's Pick-up badge (Warehouse → Shipments).
+    // Columns come from the team-app migration 20261002_return_pickups.sql; they
+    // are only sent for return requests so every other request is unaffected.
+    const otherPickup = returnEnabled && !returnSamePlace && returnAddress
+    const returnFields = returnEnabled
+      ? {
+          return_requested: true,
+          return_pickup_date: returnDate,
+          // null address = pick up at the delivery address
+          return_pickup_address: otherPickup ? [returnAddress.label, addressLine(returnAddress)].filter(Boolean).join(' — ') : null,
+          return_pickup_contact: otherPickup ? [returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ') : null,
+        }
+      : {}
     const requests = []
     for (const p of perAddress) {
       const addr = p.addr
@@ -432,7 +531,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         requested_date: shipAsap ? null : shipDate || null,
         ship_asap: shipAsap,
         shipping_speed: opt?.id || null,
-        notes: notes.trim() || null,
+        notes: fullNotes,
         // Locked-in shipping quote from the calculator
         quoted_price_cents: priceCents,
         quoted_price_includes_vat: !!vatInclusive,
@@ -443,6 +542,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         quoted_box_count: opt?.boxes || null,
         quoted_total_weight_kg: p.totalWeightKg || null,
         quoted_at: opt ? quotedAt : null,
+        ...returnFields,
       }).select('id').single()
       if (err) { setSubmitting(false); setError(err.message); return }
       requests.push(req.id)
@@ -582,6 +682,75 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
             <div className="space-y-3">
               <p className="text-xs text-gray-500">Pick the delivery destination. It needs a recipient we can contact if the carrier has questions.</p>
               <AddressPicker company={company} selectedIds={addressIds} onChange={setAddressIds} />
+
+              {returnAvailable && (
+                <div className={`rounded-lg border transition-colors ${returnChecked ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'}`}>
+                  <label className="flex items-start gap-3 px-4 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={returnChecked}
+                      onChange={(e) => setReturnChecked(e.target.checked)}
+                      className="accent-blue-600 mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</div>
+                      <div className="text-xs text-gray-500">We'll collect the items again and bring them back to the warehouse.</div>
+                    </div>
+                  </label>
+
+                  {returnChecked && (
+                    <div className="px-4 pb-4 pt-3 border-t border-blue-200 space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                          <CalendarIcon size={12} />Pick-up date
+                        </label>
+                        <input
+                          type="date"
+                          value={returnDate}
+                          onChange={(e) => setReturnDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full sm:w-56 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">Pick up at the delivery address</div>
+                          <div className="text-xs text-gray-500">Switch off to collect the return from a different address.</div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={returnSamePlace}
+                          aria-label="Pick up at the delivery address"
+                          // Switching off only takes effect once an address is confirmed in the popup.
+                          onClick={() => (returnSamePlace ? setReturnPopupOpen(true) : setReturnSamePlace(true))}
+                          className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${returnSamePlace ? 'bg-blue-600' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${returnSamePlace ? 'translate-x-4' : ''}`} />
+                        </button>
+                      </div>
+
+                      {!returnSamePlace && returnAddress && (
+                        <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                          <div className="min-w-0 text-xs">
+                            <div className="font-medium text-gray-900 flex items-center gap-1"><MapPin size={11} className="text-gray-400" />{addressTitle(returnAddress)}</div>
+                            <div className="text-gray-600">{addressLine(returnAddress)}</div>
+                            <div className="text-gray-500 mt-0.5">{[returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ')}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setReturnPopupOpen(true)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 flex-shrink-0"
+                          >
+                            <Pencil size={11} />Change
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -701,6 +870,11 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50"
                     />
                   </div>
+                  {returnBeforeShipOut && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
+                      <AlertCircle size={12} className="flex-shrink-0" />The return pick-up ({formatDate(returnDate)}) is before this ship-out date. Pick an earlier ship-out date or go back and change the pick-up date.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -749,6 +923,30 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                     ))}
                   </div>
                 </div>
+
+                {returnEnabled && (
+                  <div className="pt-3 border-t border-gray-200 text-xs">
+                    <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1"><Undo2 size={11} />Return shipment</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-gray-500">Pick-up date</div>
+                        <div className="text-gray-900 font-medium">{formatDate(returnDate)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">Pick-up from</div>
+                        {returnSamePlace || !returnAddress ? (
+                          <div className="text-gray-900 font-medium">Same as delivery address</div>
+                        ) : (
+                          <>
+                            <div className="text-gray-900 font-medium">{addressTitle(returnAddress)}</div>
+                            <div className="text-gray-600">{addressLine(returnAddress)}</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-gray-500 mt-2">The shipping total below covers the outbound shipment only.</div>
+                  </div>
+                )}
 
                 <div className="pt-3 border-t border-gray-200 space-y-2 text-xs">
                   <div className="grid grid-cols-2 gap-3">
@@ -815,6 +1013,15 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
             </PrimaryButton>
           )}
         </div>
+
+        {returnPopupOpen && (
+          <ReturnPickupPopup
+            company={company}
+            initialId={returnAddress?.id}
+            onConfirm={(addr) => { setReturnAddress(addr); setReturnSamePlace(false); setReturnPopupOpen(false) }}
+            onClose={() => setReturnPopupOpen(false)}
+          />
+        )}
       </div>
     </div>
   )
