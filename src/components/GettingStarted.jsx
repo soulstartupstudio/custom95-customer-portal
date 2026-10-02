@@ -42,7 +42,10 @@ export default function GettingStarted({ onboarding, navigate }) {
                 {s.done && <Check size={12} strokeWidth={3} />}
               </span>
               <div className="min-w-0">
-                <p className={`text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-900 font-medium'}`}>{s.label}</p>
+                {/* An open step the customer can act on is a link to where they do it. */}
+                {hint?.tab
+                  ? <button onClick={() => navigate(hint.tab)} className="text-sm text-gray-900 font-medium hover:text-blue-700 hover:underline text-left">{s.label}</button>
+                  : <p className={`text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-900 font-medium'}`}>{s.label}</p>}
                 {hint && (hint.tab
                   ? <button onClick={() => navigate(hint.tab)} className="text-xs text-blue-600 hover:underline">{hint.text}</button>
                   : <p className="text-xs text-gray-500">{hint.text}</p>)}
