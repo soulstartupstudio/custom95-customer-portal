@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatDate } from './ui'
 import AddressEditor from './AddressEditor'
-import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE, loadShippingConfig, formatEtaDate } from '../lib/shippingCalc'
+import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE, loadShippingConfig, formatEtaDate, etaDateFromDays } from '../lib/shippingCalc'
 
 const STEPS = [
   { id: 'items', label: 'Items' },
@@ -17,6 +17,18 @@ const STEPS = [
 ]
 
 const formatEur = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
+
+// ---------- Delivery-date rules ----------
+// Counted in working days (Mon–Fri) from today:
+//   earlier than +3   → not possible, the wizard cannot continue
+//   +3 up to +7       → Express only, the other services cannot be picked
+//   later than +7     → every service
+// "Deliver ASAP" is at least as urgent as +3, so it is Express only as well.
+const MIN_NOTICE_WORKING_DAYS = 3
+const EXPRESS_ONLY_WORKING_DAYS = 7
+const isExpress = (opt) => opt.id === 'express' || /express/i.test(opt.carrier || '')
+// Local yyyy-mm-dd for <input type="date"> (toISOString would shift the day in UTC+ zones).
+const toDateInput = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const hasFullContact = (a) => !!a?.contact_name?.trim() && !!a?.contact_phone?.trim() && !!a?.contact_email?.trim()
 const addressTitle = (a) => a.label || `${a.street} ${a.house_number || ''}`
@@ -333,8 +345,14 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const [returnSamePlace, setReturnSamePlace] = useState(true) // pick up where we delivered
   const [returnAddress, setReturnAddress] = useState(null) // other pick-up address (full row)
   const [returnPopupOpen, setReturnPopupOpen] = useState(false)
-  // Ship-out date is chosen a step later, so the order check lives there.
-  const returnBeforeShipOut = returnEnabled && !shipAsap && !!shipDate && !!returnDate && returnDate < shipDate
+  // Delivery date is chosen a step later, so the order check lives there.
+  const returnBeforeDelivery = returnEnabled && !shipAsap && !!shipDate && !!returnDate && returnDate < shipDate
+  // Delivery-date rules (see MIN_NOTICE_WORKING_DAYS)
+  const minDeliveryDate = toDateInput(etaDateFromDays(MIN_NOTICE_WORKING_DAYS))
+  const expressOnlyUntil = toDateInput(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))
+  const dateTooEarly = !shipAsap && !!shipDate && shipDate < minDeliveryDate
+  const expressOnly = shipAsap || (!!shipDate && !dateTooEarly && shipDate <= expressOnlyUntil)
+  const optionAllowed = (opt) => !expressOnly || isExpress(opt)
 
   // Load the editable shipping config (set up by the team in Warehouse → Shipment rates).
   useEffect(() => {
@@ -393,7 +411,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         !!a.contact_name?.trim() && !!a.contact_phone?.trim() && !!a.contact_email?.trim()
       )
     }
-    if (step === 2) return allAddressesPriced && (shipAsap || !!shipDate) && !returnBeforeShipOut
+    if (step === 2) return allAddressesPriced && (shipAsap || !!shipDate) && !dateTooEarly && !returnBeforeDelivery
     return true
   }
 
@@ -463,9 +481,25 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     return { exVat, inclVat: Math.round(exVat * (1 + VAT_RATE)) }
   }, [perAddress, chosenOptionByAddress])
 
+  // When the delivery date only allows Express, move any other choice over to it.
+  useEffect(() => {
+    if (!expressOnly) return
+    setChosenOptionByAddress((prev) => {
+      const next = { ...prev }
+      let dirty = false
+      for (const p of perAddress) {
+        const chosen = p.options.find((o) => o.id === next[p.addr.id])
+        const express = p.options.find(isExpress)
+        if (express && (!chosen || !isExpress(chosen))) { next[p.addr.id] = express.id; dirty = true }
+      }
+      return dirty ? next : prev
+    })
+  }, [expressOnly, perAddress])
+
   const allAddressesPriced = perAddress.length > 0 && perAddress.every((p) => {
     const optId = chosenOptionByAddress[p.addr.id]
-    return p.options.length > 0 && optId && p.options.find((o) => o.id === optId)
+    const opt = p.options.find((o) => o.id === optId)
+    return p.options.length > 0 && optId && opt && optionAllowed(opt)
   })
 
   const submit = async () => {
@@ -760,14 +794,16 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                       </div>
                     ) : (
                       p.options.map((opt) => {
-                        const active = chosenOptionByAddress[p.addr.id] === opt.id
+                        const allowed = optionAllowed(opt)
+                        const active = allowed && chosenOptionByAddress[p.addr.id] === opt.id
                         const Icon = opt.id === 'express' ? Zap : opt.id === 'hive' ? Leaf : Truck
                         return (
                           <button
                             key={opt.id}
                             type="button"
+                            disabled={!allowed}
                             onClick={() => setChosenOptionByAddress((prev) => ({ ...prev, [p.addr.id]: opt.id }))}
-                            className={`w-full text-left p-3 border-2 rounded-lg transition-colors ${active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                            className={`w-full text-left p-3 border-2 rounded-lg transition-colors ${!allowed ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed' : active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
                           >
                             <div className="flex items-start gap-3">
                               <Icon size={16} className={active ? 'text-blue-600' : 'text-gray-400'} />
@@ -784,6 +820,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                                   <span>{opt.boxes} box{opt.boxes === 1 ? '' : 'es'}</span>
                                 </div>
                                 <div className="text-[10px] text-gray-400 mt-0.5">{opt.sub}</div>
+                                {!allowed && <div className="text-[11px] text-gray-600 mt-0.5">Not available for {shipAsap ? 'ASAP delivery' : 'this delivery date'} — Express only.</div>}
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <div className="text-sm font-bold text-gray-900">
@@ -795,6 +832,11 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                           </button>
                         )
                       })
+                    )}
+                    {expressOnly && p.options.length > 0 && !p.options.some(isExpress) && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
+                        <AlertCircle size={12} className="flex-shrink-0" />Express is not available for this destination. Choose a delivery date after {formatEtaDate(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))}.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -825,7 +867,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
               {/* Date picker */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  <CalendarIcon size={14} />When should we ship out?
+                  <CalendarIcon size={14} />When do you need it delivered?
                 </label>
                 <div className="space-y-2">
                   <button
@@ -835,28 +877,38 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                   >
                     <div className="flex items-center gap-2">
                       <Zap size={14} className="text-blue-600" />
-                      <span className="text-sm font-medium text-gray-900">Ship ASAP</span>
+                      <span className="text-sm font-medium text-gray-900">Deliver ASAP</span>
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">We'll ship out as soon as we can process the request.</div>
+                    <div className="text-xs text-gray-500 mt-0.5">We'll deliver as soon as we can process the request.</div>
                   </button>
                   <div className={`w-full px-4 py-3 border rounded-lg transition-colors ${!shipAsap ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" checked={!shipAsap} onChange={() => setShipAsap(false)} className="accent-blue-600" />
-                      <span className="text-sm font-medium text-gray-900">Specific ship-out date</span>
+                      <span className="text-sm font-medium text-gray-900">Specific delivery date</span>
                     </label>
-                    <div className="text-xs text-gray-500 mb-2">Day we'll send the package out (not the delivery date).</div>
+                    <div className="text-xs text-gray-500 mb-2">Day the package should arrive. Earliest possible: {formatEtaDate(etaDateFromDays(MIN_NOTICE_WORKING_DAYS))} ({MIN_NOTICE_WORKING_DAYS} working days from today).</div>
                     <input
                       type="date"
                       value={shipDate}
                       onChange={(e) => { setShipDate(e.target.value); setShipAsap(false) }}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={minDeliveryDate}
                       disabled={shipAsap}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50"
                     />
                   </div>
-                  {returnBeforeShipOut && (
+                  {dateTooEarly && (
+                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-1.5">
+                      <AlertCircle size={12} className="flex-shrink-0" />We need at least {MIN_NOTICE_WORKING_DAYS} working days. The earliest delivery date is {formatEtaDate(etaDateFromDays(MIN_NOTICE_WORKING_DAYS))}.
+                    </div>
+                  )}
+                  {expressOnly && (
+                    <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-1.5">
+                      <Zap size={12} className="flex-shrink-0" />{shipAsap ? 'ASAP delivery' : `Delivery within ${EXPRESS_ONLY_WORKING_DAYS} working days`} is only possible with Express. For other services, choose a delivery date after {formatEtaDate(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))}.
+                    </div>
+                  )}
+                  {returnBeforeDelivery && (
                     <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
-                      <AlertCircle size={12} className="flex-shrink-0" />The return pick-up ({formatDate(returnDate)}) is before this ship-out date. Pick an earlier ship-out date or go back and change the pick-up date.
+                      <AlertCircle size={12} className="flex-shrink-0" />The return pick-up ({formatDate(returnDate)}) is before this delivery date. Pick an earlier delivery date or go back and change the pick-up date.
                     </div>
                   )}
                 </div>
@@ -935,7 +987,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                 <div className="pt-3 border-t border-gray-200 space-y-2 text-xs">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-gray-500">Ship out</div>
+                      <div className="text-gray-500">Delivery</div>
                       <div className="text-gray-900 font-medium">{shipAsap ? 'ASAP' : formatDate(shipDate) || '—'}</div>
                     </div>
                     <div>

@@ -230,7 +230,7 @@ function RequestCard({ request, items, onClick }) {
       </div>
       <div className="grid grid-cols-3 gap-3 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-100">
         <div>
-          <div className="text-gray-400">Ship-out</div>
+          <div className="text-gray-400">Delivery</div>
           <div className="text-gray-900 font-medium">{request.ship_asap ? 'ASAP' : formatDate(request.requested_date) || '—'}</div>
         </div>
         <div>
@@ -1173,7 +1173,7 @@ function RequestDetail({ request, items, onClose }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><div className="text-xs text-gray-500">Ship-out date</div><div className="text-gray-900 font-medium">{request.ship_asap ? 'ASAP' : formatDate(request.requested_date) || '—'}</div></div>
+            <div><div className="text-xs text-gray-500">Delivery date</div><div className="text-gray-900 font-medium">{request.ship_asap ? 'ASAP' : formatDate(request.requested_date) || '—'}</div></div>
             <div><div className="text-xs text-gray-500">Created</div><div className="text-gray-900">{formatDate(request.created_at)}</div></div>
             <div><div className="text-xs text-gray-500">Requested by</div><div className="text-gray-900">{requester ? `${requester.first_name} ${requester.last_name}` : '—'}</div></div>
             <div><div className="text-xs text-gray-500">Handled at</div><div className="text-gray-900">{formatDate(request.handled_at) || '—'}</div></div>
