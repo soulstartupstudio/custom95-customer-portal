@@ -4,9 +4,10 @@ import { PageHeader, Spinner, PrimaryButton, SecondaryButton, formatDate } from 
 import { MERCH_AUDIT, auditPayload, valuesFromAnswers } from '../lib/merchAudit'
 import { fetchPortalPlan, submitMerchAudit } from '../lib/portalPlan'
 
-// The Merch Audit — the starting point of the customer's Merch Plan. Answers go to their
+// The Merch Questionnaire — the customer's input. Custom95 does the Merch Audit based on it
+// and builds the Merch Calendar, Core Collection and 90-day / year plan. Answers go to the
 // Account Manager (and into the account's notes in the team app). A draft is kept in this
-// browser so a half-filled audit survives a refresh.
+// browser so a half-filled questionnaire survives a refresh.
 const draftKey = (companyId) => `c95.merchAudit.${companyId}`
 const readDraft = (id) => { try { return JSON.parse(localStorage.getItem(draftKey(id)) || 'null') } catch { return null } }
 const writeDraft = (id, v) => { try { localStorage.setItem(draftKey(id), JSON.stringify(v)) } catch { /* private mode */ } }
@@ -65,8 +66,8 @@ export default function MerchAuditPage({ company, navigate }) {
     return (
       <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200 p-8 text-center">
         <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><Check className="text-green-600" /></div>
-        <h1 className="text-xl font-semibold text-gray-900">Thank you — your Merch Audit is in</h1>
-        <p className="text-sm text-gray-600 mt-2">Your Account Manager has it now and will use it to prepare your Plan Session, where we map your year together.</p>
+        <h1 className="text-xl font-semibold text-gray-900">Thank you — your Merch Questionnaire is in</h1>
+        <p className="text-sm text-gray-600 mt-2">We'll use your answers for your Merch Audit, and from there build your Merch Calendar, Core Collection and 90-day or year plan. Your Account Manager walks you through it.</p>
         <div className="mt-6 flex justify-center gap-2">
           <PrimaryButton onClick={() => navigate('plan')}>Back to your Plan</PrimaryButton>
         </div>
@@ -77,11 +78,11 @@ export default function MerchAuditPage({ company, navigate }) {
   return (
     <div className="max-w-3xl space-y-5">
       <button onClick={() => navigate('plan')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"><ArrowLeft size={14} /> Your Plan</button>
-      <PageHeader title="Merch Audit"
-        subtitle="Tell us about your brand, your merch today and the moments that matter this year. Answer what you can — your Account Manager goes through the rest with you." />
+      <PageHeader title="Merch Questionnaire"
+        subtitle="Tell us about your brand, your merch today and the moments that matter. We use your answers for the Merch Audit and your Merch Plan. Answer what you can — your Account Manager goes through the rest with you." />
       {previous && (
         <p className="text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3">
-          You submitted the audit on {formatDate(previous.submitted_at)}{previous.submitted_by ? ` (${previous.submitted_by})` : ''}. Your answers are filled in below — change anything and submit again to send an update.
+          You filled in the questionnaire on {formatDate(previous.submitted_at)}{previous.submitted_by ? ` (${previous.submitted_by})` : ''}. Your answers are filled in below — change anything and submit again to send an update.
         </p>
       )}
 
@@ -132,7 +133,7 @@ export default function MerchAuditPage({ company, navigate }) {
         {error && <span className="text-sm text-red-600 w-full">{error}</span>}
         <div className="ml-auto flex gap-2">
           <SecondaryButton onClick={() => navigate('plan')}>Continue later</SecondaryButton>
-          <PrimaryButton onClick={submit} disabled={busy}>{busy ? 'Sending…' : previous ? 'Send update' : 'Submit Merch Audit'}</PrimaryButton>
+          <PrimaryButton onClick={submit} disabled={busy}>{busy ? 'Sending…' : previous ? 'Send update' : 'Send questionnaire'}</PrimaryButton>
         </div>
       </div>
     </div>

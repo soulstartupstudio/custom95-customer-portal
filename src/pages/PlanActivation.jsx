@@ -135,10 +135,10 @@ export default function PlanActivation({ token, preview = false }) {
   // ── Welcome (just activated, or opened again after activating) ───────────
   if (done || d.state === 'activated') {
     const steps = [
-      ['Merch Audit', 'We collect what we need to know about your brand, current merchandise and upcoming moments.'],
-      ['Plan Session', 'Together we map your year and find your biggest merchandise opportunities.'],
-      ['Your Merch Plan', 'We build your Merch Calendar, Core Collection and 90-Day Action Plan.'],
-      ['Start executing', 'Your first projects and opportunities go into motion straight away.'],
+      ['Add your team', 'Invite everyone with a say on merch — HR, events, office manager, interns, creatives, founders — to your Digital Merch Home.'],
+      ['Merch Questionnaire', 'Tell us about your brand, your merch today and the moments that matter.'],
+      ['Merch Audit', 'We analyse your answers and walk you through what we find.'],
+      ['Your Merch Plan', 'We build your Merch Calendar, Core Collection and 90-day or year plan — and your first projects go into motion.'],
     ]
     return (
       <div className="min-h-screen bg-[#f6f6f4] py-10 sm:py-16 px-4">

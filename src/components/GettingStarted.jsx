@@ -4,10 +4,11 @@ import { Check, ArrowRight } from 'lucide-react'
 // internal checklist has more). Each open step says what to do next or who's on it.
 const NEXT = {
   company: { text: 'Check your company details', tab: 'settings' },
+  team: { text: 'Invite everyone with a say on merch — HR, events, office manager, interns, creatives, founders — to your Digital Merch Home', short: 'Invite your team', tab: 'contacts' },
   brand_assets: { text: 'Upload your logos & brand files', tab: 'brand' },
-  merch_audit: { text: 'Fill in the Merch Audit', tab: 'audit' },
-  plan_session: { text: 'Your Account Manager schedules this with you' },
-  merch_plan: { text: 'We build your Merch Calendar, Core Collection and 90-Day Action Plan' },
+  questionnaire: { text: 'Tell us about your brand, team and moments', short: 'Fill in the Merch Questionnaire', tab: 'audit' },
+  merch_audit: { text: 'We analyse your answers and walk you through the results' },
+  merch_plan: { text: 'Your Merch Calendar, Core Collection and 90-day or year plan' },
 }
 
 export default function GettingStarted({ onboarding, navigate }) {
@@ -25,7 +26,7 @@ export default function GettingStarted({ onboarding, navigate }) {
         {nextOpen && NEXT[nextOpen.key]?.tab && (
           <button onClick={() => navigate(NEXT[nextOpen.key].tab)}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700">
-            {NEXT[nextOpen.key].text} <ArrowRight size={14} />
+            {NEXT[nextOpen.key].short || NEXT[nextOpen.key].text} <ArrowRight size={14} />
           </button>
         )}
       </div>

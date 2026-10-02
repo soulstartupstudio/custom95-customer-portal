@@ -114,7 +114,7 @@ export default function Layout({ session, contact, company }) {
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
       case 'plan': return <YourPlanPage key={refreshKey} company={company} navigate={setActiveTab} />
-      // The Merch Audit has no nav entry of its own — it's reached from Your Plan / Getting Started.
+      // The Merch Questionnaire has no nav entry of its own — it's reached from Your Plan / Getting Started.
       case 'audit': return <MerchAuditPage company={company} navigate={setActiveTab} />
       default: return null
     }

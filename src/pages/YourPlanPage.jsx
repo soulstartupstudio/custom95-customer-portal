@@ -9,7 +9,7 @@ import { planLabel } from '../lib/planBenefits'
 const per = (f) => ({ monthly: 'month', quarterly: 'quarter', yearly: 'year' }[f] || 'month')
 
 // "Your Plan": what the customer is on, the terms they accepted, the full agreement, their
-// Account Manager, onboarding progress and the Merch Audit.
+// Account Manager, onboarding progress and the Merch Questionnaire.
 export default function YourPlanPage({ company, navigate }) {
   const [state, setState] = useState({ loading: true })
   const [showAgreement, setShowAgreement] = useState(false)
@@ -89,10 +89,10 @@ export default function YourPlanPage({ company, navigate }) {
       <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 flex-wrap">
         <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><ClipboardList size={18} /></div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-gray-900">Merch Audit</h3>
-          <p className="text-xs text-gray-500">{d.audit ? `Submitted on ${formatDate(d.audit.submitted_at)}${d.audit.submitted_by ? ` by ${d.audit.submitted_by}` : ''}` : 'Your brand, your merch today and the moments that matter — the starting point of your Merch Plan.'}</p>
+          <h3 className="text-sm font-semibold text-gray-900">Merch Questionnaire</h3>
+          <p className="text-xs text-gray-500">{d.audit ? `Filled in on ${formatDate(d.audit.submitted_at)}${d.audit.submitted_by ? ` by ${d.audit.submitted_by}` : ''} — we use it for your Merch Audit.` : 'Your brand, your merch today and the moments that matter — the input for your Merch Audit and Merch Plan.'}</p>
         </div>
-        <PrimaryButton onClick={() => navigate('audit')}>{d.audit ? 'View or update' : 'Start the Merch Audit'} <ArrowRight size={14} /></PrimaryButton>
+        <PrimaryButton onClick={() => navigate('audit')}>{d.audit ? 'View or update' : 'Fill in the questionnaire'} <ArrowRight size={14} /></PrimaryButton>
       </div>
 
       {showAgreement && d.agreement && (
