@@ -965,7 +965,7 @@ function VouchersTab({ discounts, quickEnabled, onQuickCreate, onCreate, onDelet
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm text-gray-600">{discounts.length} voucher code{discounts.length === 1 ? '' : 's'}</div>
         {quickEnabled ? (
-          <PrimaryButton onClick={onQuickCreate}><Plus size={14} />Add discount</PrimaryButton>
+          <PrimaryButton onClick={onQuickCreate}><Plus size={14} />Create discount</PrimaryButton>
         ) : (
           <PrimaryButton onClick={onCreate}><Plus size={14} />Create voucher</PrimaryButton>
         )}
