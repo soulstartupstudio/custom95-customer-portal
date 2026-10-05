@@ -28,10 +28,79 @@ function generateCode(percent) {
 }
 
 // "A", "A and B", "A, B and C" — with a custom joiner for the free-item wording ("A or B").
+function joinPlain(items, last = 'and') {
+  if (items.length <= 1) return items[0] || ''
+  return `${items.slice(0, -1).join(', ')} ${last} ${items[items.length - 1]}`
+}
 function joinTitles(titles, last = 'and') {
-  const t = titles.map((x) => `“${x}”`)
-  if (t.length <= 1) return t[0] || ''
-  return `${t.slice(0, -1).join(', ')} ${last} ${t[t.length - 1]}`
+  return joinPlain(titles.map((x) => `“${x}”`), last)
+}
+
+// "T-shirt Wit" + "T-shirt Zwart" → { name: 'T-shirt', colours: ['Wit', 'Zwart'] }.
+// When the titles share no leading words there is no garment name to show, so
+// the row falls back to the full titles.
+function garmentName(titles) {
+  const words = titles.map((t) => String(t || '').trim().split(/\s+/))
+  let n = 0
+  while (words.every((w) => w[n] !== undefined && w[n].toLowerCase() === words[0][n].toLowerCase())) n++
+  const trim = (s) => s.replace(/^[\s\-–—|,:/]+|[\s\-–—|,:/]+$/g, '')
+  const name = trim(words[0].slice(0, n).join(' '))
+  const colours = words.map((w) => trim(w.slice(n).join(' ')))
+  if (!name || colours.some((c) => !c)) return { name: titles.join(' / '), colours: null }
+  return { name, colours }
+}
+
+// One picker row per garment. Stores that sell each colour as its own product
+// link them in Shopify; shopify-sync returns those sets (`groups`) and each one
+// collapses into a single row covering all its colours. Every other product
+// stays a row of its own, in the list's original order.
+function buildRows(products, groups) {
+  const local = new Map(products.filter((p) => p.shopify_product_id).map((p) => [String(p.shopify_product_id), p]))
+  const rowOf = new Map()
+  const groupRows = (groups || []).filter((g) => g?.products?.length > 1).map((g) => {
+    const { name, colours } = garmentName(g.products.map((m) => m.title))
+    const locals = g.products.map((m) => local.get(String(m.shopify_product_id))).filter(Boolean)
+    const row = {
+      key: `g:${g.products.map((m) => m.shopify_product_id).join('-')}`,
+      title: name,
+      colours,
+      ids: g.products.map((m) => Number(m.shopify_product_id)),
+      memberTitles: g.products.map((m) => m.title),
+      image_url: locals.find((p) => p.image_url)?.image_url || null,
+      status: locals.length && locals.every((p) => p.status && p.status !== 'active') ? locals[0].status : null,
+      selectable: true,
+    }
+    for (const m of g.products) rowOf.set(String(m.shopify_product_id), row)
+    return row
+  })
+  const rows = []
+  const emitted = new Set()
+  for (const p of products) {
+    const group = p.shopify_product_id ? rowOf.get(String(p.shopify_product_id)) : null
+    if (group) {
+      if (!emitted.has(group.key)) { emitted.add(group.key); rows.push(group) }
+      continue
+    }
+    rows.push({
+      key: `p:${p.id}`,
+      title: p.title,
+      colours: null,
+      ids: p.shopify_product_id ? [Number(p.shopify_product_id)] : [],
+      memberTitles: [p.title],
+      image_url: p.image_url || null,
+      status: p.status && p.status !== 'active' ? p.status : null,
+      selectable: !!p.shopify_product_id,
+    })
+  }
+  for (const g of groupRows) if (!emitted.has(g.key)) rows.push(g)
+  return rows
+}
+
+// How a code's coverage is named: "“T-shirt” in Wit or Zwart" for a garment row,
+// plain titles otherwise (or when Shopify reports more products than the row shows).
+function describeCoverage(row, titles, joiner) {
+  if (row?.colours && titles.length === row.ids.length) return `“${row.title}” in ${joinPlain(row.colours, joiner)}`
+  return joinTitles(titles, joiner)
 }
 
 const PRESETS = [5, 10, 15, 20, 25]
@@ -40,12 +109,13 @@ const PRESETS = [5, 10, 15, 20, 25]
 const ONE_FREE = 100
 
 // One-screen percentage-discount builder: pick a %, pick the scope (whole
-// shop or a single product), get an auto-generated code, done. Creates the
-// code in Shopify through the same shopify-sync action as VoucherModal.
+// shop or one product in all its colours), get an auto-generated code, done.
+// Creates the code in Shopify through the same shopify-sync action as VoucherModal.
 export default function QuickDiscountModal({ shop, products, onClose, onCreated }) {
   const [percent, setPercent] = useState('10')
   const [scope, setScope] = useState('all') // 'all' | 'product'
-  const [productId, setProductId] = useState(null)
+  const [selectedKey, setSelectedKey] = useState(null) // picker row key
+  const [groups, setGroups] = useState(undefined) // undefined = loading, null = unavailable
   const [productQuery, setProductQuery] = useState('')
   const [code, setCode] = useState(() => generateCode(10))
   const [codeEdited, setCodeEdited] = useState(false)
@@ -54,12 +124,26 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   const [usageLimit, setUsageLimit] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [created, setCreated] = useState(null) // { code, percent, oneFree, titles, amountCents }
+  const [created, setCreated] = useState(null) // { code, percent, oneFree, coverage, amountCents }
   const [copied, setCopied] = useState(false)
   const [targets, setTargets] = useState(null) // { products: [{ shopify_product_id, title }], price_cents }
   const [targetsError, setTargetsError] = useState(null)
 
-  const product = products.find((p) => p.id === productId) || null
+  // Colour groups for the picker. Best-effort: if shopify-sync can't provide
+  // them (or is slow), the picker lists every product on its own and the
+  // per-product sibling lookup below still covers the other colours.
+  useEffect(() => {
+    let cancelled = false
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000))
+    Promise.race([invokeShopify({ action: 'discount_groups', brandshop_id: shop.id }), timeout])
+      .then((d) => { if (!cancelled) setGroups(d?.groups || []) })
+      .catch(() => { if (!cancelled) setGroups(null) })
+    return () => { cancelled = true }
+  }, [shop.id])
+
+  const rows = useMemo(() => buildRows(products, groups), [products, groups])
+  const selected = rows.find((r) => r.key === selectedKey) || null
+  const selectedIds = selected ? selected.ids.join(',') : ''
   const pct = Number.parseFloat(percent)
   const oneFree = pct === ONE_FREE
   const pctValid = Number.isFinite(pct) && pct > 0 && pct <= 100
@@ -78,34 +162,35 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   // Ask shopify-sync which products the code will really cover — the store can
   // link colour siblings (T-shirt Wit / Zwart) that are separate products — and
   // the price a 100% code takes off. Best-effort: without it the summary just
-  // names the picked product and the server still resolves siblings on create.
+  // names the picked row and the server still resolves siblings on create.
   useEffect(() => {
     setTargets(null)
     setTargetsError(null)
-    if (scope !== 'product' || !product?.shopify_product_id) return
+    if (scope !== 'product' || !selectedIds) return
     let cancelled = false
-    invokeShopify({ action: 'discount_targets', brandshop_id: shop.id, entitled_product_ids: [Number(product.shopify_product_id)] })
+    invokeShopify({ action: 'discount_targets', brandshop_id: shop.id, entitled_product_ids: selectedIds.split(',').map(Number) })
       .then((d) => { if (!cancelled) setTargets({ products: d?.products || [], price_cents: d?.price_cents ?? null }) })
       .catch((e) => { if (!cancelled) setTargetsError(e.message) })
     return () => { cancelled = true }
-  }, [scope, product?.shopify_product_id, shop.id])
+  }, [scope, selectedIds, shop.id])
 
-  const coveredTitles = targets?.products?.length ? targets.products.map((p) => p.title) : product ? [product.title] : []
-  const siblingTitles = targets?.products?.filter((p) => String(p.shopify_product_id) !== String(product?.shopify_product_id)).map((p) => p.title) || []
+  const coveredTitles = targets?.products?.length ? targets.products.map((p) => p.title) : selected ? selected.memberTitles : []
+  // Products Shopify adds on top of what the picked row already shows.
+  const extraTitles = selected ? (targets?.products || []).filter((p) => !selected.ids.includes(Number(p.shopify_product_id))).map((p) => p.title) : []
 
-  const visibleProducts = useMemo(() => {
+  const visibleRows = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
-    if (!q) return products
-    return products.filter((p) => (p.title || '').toLowerCase().includes(q))
-  }, [products, productQuery])
+    if (!q) return rows
+    return rows.filter((r) => [r.title, ...r.memberTitles].join(' ').toLowerCase().includes(q))
+  }, [rows, productQuery])
 
-  const canSubmit = pctValid && !scopeError && !!code.trim() && !(scope === 'product' && !product)
+  const canSubmit = pctValid && !scopeError && !!code.trim() && !(scope === 'product' && !selected)
 
   const submit = async () => {
     if (!canSubmit) return
     setBusy(true); setError(null)
     const finalCode = code.toUpperCase().trim()
-    const scoped = scope === 'product' && product
+    const scoped = scope === 'product' && selected
     try {
       const res = await invokeShopify({
         action: 'create_discount',
@@ -117,19 +202,20 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
         ends_at: endsAt ? new Date(endsAt).toISOString() : null,
         customer_shopify_id: null,
         customer_email: null,
-        notes: scoped ? `Only for product: ${product.title}` : null,
+        notes: scoped ? `Only for product: ${selected.title}` : null,
         ...(scoped
           ? {
-              entitled_product_ids: [Number(product.shopify_product_id)],
-              entitled_product_titles: product.title,
+              entitled_product_ids: selected.ids,
+              entitled_product_titles: selected.memberTitles.join(', '),
             }
           : {}),
       })
+      const titles = res?.products?.map((p) => p.title) || coveredTitles
       setCreated({
         code: finalCode,
         percent: pct,
         oneFree,
-        titles: scoped ? (res?.products?.map((p) => p.title) || coveredTitles) : null,
+        coverage: scoped ? { and: describeCoverage(selected, titles, 'and'), or: describeCoverage(selected, titles, 'or') } : null,
         amountCents: res?.amount != null ? Math.round(res.amount * 100) : targets?.price_cents ?? null,
       })
       onCreated()
@@ -151,7 +237,7 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   const startAnother = () => {
     setCreated(null)
     setCopied(false)
-    setProductId(null)
+    setSelectedKey(null)
     setProductQuery('')
     setCode(generateCode(percent))
     setCodeEdited(false)
@@ -161,15 +247,17 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
   const summary = () => {
     const codeStr = code.toUpperCase().trim() || '…'
     const pctStr = pctValid ? Math.round(pct * 100) / 100 : '…'
-    const what = scope === 'product' ? (product ? joinTitles(coveredTitles) : 'the product you pick above') : 'everything in your shop'
+    const what = scope === 'product' ? (selected ? describeCoverage(selected, coveredTitles, 'and') : 'the product you pick above') : 'everything in your shop'
     const parts = []
     if (scope === 'product' && oneFree) {
       const price = targets?.price_cents != null ? ` (${formatPrice(targets.price_cents)} off)` : ''
-      parts.push(`Customers who enter ${codeStr} at checkout get one ${product ? joinTitles(coveredTitles, 'or') : 'item'} free${price} — however many they order, only one is free.`)
+      parts.push(`Customers who enter ${codeStr} at checkout get one ${selected ? describeCoverage(selected, coveredTitles, 'or') : 'item'} free${price} — however many they order, only one is free.`)
     } else {
       parts.push(`Customers who enter ${codeStr} at checkout get ${pctStr}% off ${what}.`)
     }
-    if (scope === 'product') parts.push('One use per customer; can’t be combined with other discounts.')
+    // Combining with another product's code needs the shopify-sync version that
+    // also serves the colour groups, so only promise it when that one answered.
+    if (scope === 'product') parts.push(groups ? 'One use per customer. Works in the same order as a code for a different product.' : 'One use per customer.')
     if (endsAt) parts.push(`Valid until ${new Date(endsAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.`)
     if (usageLimit) parts.push(`Can be used ${usageLimit} time${usageLimit === '1' ? '' : 's'} in total.`)
     return parts.join(' ')
@@ -195,8 +283,8 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
               <div className="text-base font-semibold text-gray-900">Discount created</div>
               <div className="text-sm text-gray-600 mt-0.5">
                 {created.oneFree
-                  ? `One free ${joinTitles(created.titles || [], 'or')}${created.amountCents != null ? ` (${formatPrice(created.amountCents)} off)` : ''}`
-                  : `${created.percent}% off ${created.titles ? joinTitles(created.titles) : 'your whole shop'}`}
+                  ? `One free ${created.coverage?.or || 'item'}${created.amountCents != null ? ` (${formatPrice(created.amountCents)} off)` : ''}`
+                  : `${created.percent}% off ${created.coverage ? created.coverage.and : 'your whole shop'}`}
                 {' '}— live in Shopify now.
               </div>
             </div>
@@ -297,41 +385,49 @@ export default function QuickDiscountModal({ shop, products, onClose, onCreated 
                       />
                     </div>
                     <div className="max-h-44 overflow-y-auto">
-                      {visibleProducts.length === 0 ? (
+                      {groups === undefined ? (
+                        <div className="px-3 py-6 text-center text-xs text-gray-400">Loading products…</div>
+                      ) : visibleRows.length === 0 ? (
                         <div className="px-3 py-6 text-center text-xs text-gray-400">
-                          {products.length === 0 ? 'No products synced from Shopify yet.' : 'No products match your search.'}
+                          {rows.length === 0 ? 'No products synced from Shopify yet.' : 'No products match your search.'}
                         </div>
-                      ) : visibleProducts.map((p) => {
-                        const selectable = !!p.shopify_product_id
-                        const selected = productId === p.id
+                      ) : visibleRows.map((r) => {
+                        const isSelected = selectedKey === r.key
                         return (
                           <button
-                            key={p.id}
-                            onClick={() => selectable && setProductId(selected ? null : p.id)}
-                            disabled={!selectable}
-                            title={selectable ? undefined : 'Not synced to Shopify yet'}
+                            key={r.key}
+                            onClick={() => r.selectable && setSelectedKey(isSelected ? null : r.key)}
+                            disabled={!r.selectable}
+                            title={r.selectable ? undefined : 'Not synced to Shopify yet'}
                             className={`w-full px-3 py-2 flex items-center gap-3 text-left border-b border-gray-50 last:border-0 transition-colors ${
-                              selected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                              isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
                             } disabled:opacity-40 disabled:cursor-not-allowed`}
                           >
-                            {p.image_url ? (
-                              <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+                            {r.image_url ? (
+                              <img src={r.image_url} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
                             ) : (
                               <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center flex-shrink-0"><Package size={14} className="text-gray-300" /></div>
                             )}
-                            <span className="flex-1 min-w-0 text-sm text-gray-900 truncate">{p.title}</span>
-                            {p.status && p.status !== 'active' && <Badge tone="gray">{p.status}</Badge>}
-                            {selected && <Check size={16} className="text-blue-600 flex-shrink-0" />}
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-sm text-gray-900 truncate">{r.title}</span>
+                              {r.ids.length > 1 && (
+                                <span className="block text-xs text-gray-500 truncate">
+                                  {r.colours ? `All colours: ${r.colours.join(' · ')}` : `${r.ids.length} linked products`}
+                                </span>
+                              )}
+                            </span>
+                            {r.status && <Badge tone="gray">{r.status}</Badge>}
+                            {isSelected && <Check size={16} className="text-blue-600 flex-shrink-0" />}
                           </button>
                         )
                       })}
                     </div>
-                    {product && siblingTitles.length > 0 && (
+                    {selected && extraTitles.length > 0 && (
                       <div className="px-3 py-2 border-t border-blue-100 bg-blue-50 text-xs text-blue-900">
-                        Also covers {joinTitles(siblingTitles)} — the same item in other colours.
+                        Also covers {joinTitles(extraTitles)} — the same item in other colours.
                       </div>
                     )}
-                    {product && targetsError && (
+                    {selected && targetsError && (
                       <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
                         Couldn’t check for colour variants right now — the code is still created for this product.
                       </div>

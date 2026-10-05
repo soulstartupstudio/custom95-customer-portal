@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
     if (action === 'add_store_credit')   return json({ ok: true, ...(await addStoreCredit(sb, bs, body)) });
     if (action === 'list_discounts')     return json({ ok: true, ...(await listDiscounts(sb, bs)) });
     if (action === 'discount_targets')   return json({ ok: true, ...(await discountTargets(bs, body)) });
+    if (action === 'discount_groups')    return json({ ok: true, ...(await discountGroups(bs)) });
     if (action === 'create_discount')    return json({ ok: true, ...(await createDiscount(sb, bs, body)) });
     if (action === 'delete_discount')    return json({ ok: true, ...(await deleteDiscount(sb, bs, body)) });
     if (action === 'create_customer')    return json({ ok: true, ...(await createCustomer(sb, bs, body)) });
@@ -341,8 +342,10 @@ const gidToId = (gid: string) => Number(String(gid).split('/').pop());
 // stores each colour is its own product (T-shirt Wit / T-shirt Zwart), linked
 // through the product metafield custom.discount_siblings (list.product_reference).
 // Sizes need nothing — a product target already covers all its variants.
-// Also returns the picked product's price, which 100% ("one item free") codes
-// use as their fixed amount. No metafield → just the picked product(s).
+// Also returns the price 100% ("one item free") codes use as their fixed
+// amount: the picked product's price, or the highest one when several are
+// picked (a garment in all its colours) so any of them comes out fully free.
+// No metafield → just the picked product(s).
 async function resolveDiscountTargets(bs: any, productIds: number[]) {
   const q = `query($id: ID!) { product(id: $id) { id title variants(first: 1) { nodes { price } } siblings: metafield(namespace: "custom", key: "discount_siblings") { references(first: 10) { nodes { ... on Product { id title } } } } } }`;
   const targets = new Map<number, string>();
@@ -352,10 +355,8 @@ async function resolveDiscountTargets(bs: any, productIds: number[]) {
     const p = data?.product;
     if (!p) throw new Error(`Product ${pid} not found in Shopify`);
     targets.set(gidToId(p.id), p.title);
-    if (price == null) {
-      const v = p.variants?.nodes?.[0]?.price;
-      if (v != null) price = parseFloat(v);
-    }
+    const v = p.variants?.nodes?.[0]?.price;
+    if (v != null) price = Math.max(price ?? 0, parseFloat(v));
     for (const s of p.siblings?.references?.nodes || []) {
       if (s?.id && !targets.has(gidToId(s.id))) targets.set(gidToId(s.id), s.title);
     }
@@ -372,11 +373,60 @@ async function discountTargets(bs: any, body: any) {
   return { products, price_cents: price != null ? Math.round(price * 100) : null, currency: bs.currency || 'EUR' };
 }
 
+// Garment groups for the portal picker. Following custom.discount_siblings in
+// both directions turns colour-per-product stores into sets like
+// {T-shirt Wit, T-shirt Zwart}, which the portal shows as one "T-shirt" row.
+// Archived products are left out; only sets of two or more are returned.
+async function discountGroups(bs: any) {
+  const q = `query($after: String) { products(first: 40, after: $after) { pageInfo { hasNextPage endCursor } nodes { id title status variants(first: 1) { nodes { price } } siblings: metafield(namespace: "custom", key: "discount_siblings") { references(first: 10) { nodes { ... on Product { id title } } } } } } }`;
+  const info = new Map<number, { title: string; status: string | null; price_cents: number | null }>();
+  const parent = new Map<number, number>();
+  const find = (x: number): number => {
+    if (!parent.has(x)) parent.set(x, x);
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(x, r);
+    return r;
+  };
+  let after: string | null = null;
+  for (let page = 0; page < 25; page++) {
+    const data: any = await shopifyGraphQL(bs, q, { after });
+    const conn = data?.products;
+    for (const p of conn?.nodes || []) {
+      const id = gidToId(p.id);
+      const v = p.variants?.nodes?.[0]?.price;
+      info.set(id, { title: p.title, status: p.status ?? null, price_cents: v != null ? Math.round(parseFloat(v) * 100) : null });
+      for (const s of p.siblings?.references?.nodes || []) {
+        if (!s?.id) continue;
+        const sid = gidToId(s.id);
+        if (!info.has(sid)) info.set(sid, { title: s.title, status: null, price_cents: null });
+        parent.set(find(sid), find(id));
+      }
+    }
+    if (!conn?.pageInfo?.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  const sets = new Map<number, number[]>();
+  for (const [id, p] of info) {
+    if (p.status === 'ARCHIVED') continue;
+    const root = find(id);
+    sets.set(root, [...(sets.get(root) || []), id]);
+  }
+  const groups = [...sets.values()].filter((ids) => ids.length > 1).map((ids) => ({
+    products: ids.map((id) => ({ shopify_product_id: id, title: info.get(id)!.title, price_cents: info.get(id)!.price_cents }))
+      .sort((a, b) => a.title.localeCompare(b.title)),
+  }));
+  return { groups };
+}
+
 // Product-scoped codes go through the GraphQL discount API. Unlike legacy price
 // rules it can take a fixed amount that is applied ONCE across all matching
 // lines (so 100% = exactly one item free, however many are in the cart) and it
-// lets us lock the code down: once per customer, never stacking with other
-// discounts. Whole-shop codes keep using the REST price rule path unchanged.
+// lets us lock the code down: once per customer, and combinable only with other
+// product discounts — so a T-shirt code and a pullover code work in one order
+// (Shopify never applies two product discounts to the same line), but nothing
+// stacks with order or shipping discounts. Whole-shop codes keep using the
+// REST price rule path unchanged.
 async function createProductDiscount(sb: any, bs: any, p: any) {
   if (p.value_type !== 'percentage') throw new Error('Product-scoped codes must be percentage discounts');
   const pct = parseFloat(p.value);
@@ -391,7 +441,7 @@ async function createProductDiscount(sb: any, bs: any, p: any) {
     ...(endsAt ? { endsAt } : {}),
     ...(p.usage_limit ? { usageLimit: Number(p.usage_limit) } : {}),
     appliesOncePerCustomer: true,
-    combinesWith: { orderDiscounts: false, productDiscounts: false, shippingDiscounts: false },
+    combinesWith: { orderDiscounts: false, productDiscounts: true, shippingDiscounts: false },
     customerSelection: p.customer_shopify_id ? { customers: { add: [`gid://shopify/Customer/${p.customer_shopify_id}`] } } : { all: true },
     customerGets: {
       value: oneItemFree
