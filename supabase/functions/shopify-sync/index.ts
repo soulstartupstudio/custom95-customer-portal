@@ -422,11 +422,12 @@ async function discountGroups(bs: any) {
 // Product-scoped codes go through the GraphQL discount API. Unlike legacy price
 // rules it can take a fixed amount that is applied ONCE across all matching
 // lines (so 100% = exactly one item free, however many are in the cart) and it
-// lets us lock the code down: once per customer, and combinable only with other
-// product discounts — so a T-shirt code and a pullover code work in one order
-// (Shopify never applies two product discounts to the same line), but nothing
-// stacks with order or shipping discounts. Whole-shop codes keep using the
-// REST price rule path unchanged.
+// lets us lock the code down: once per customer, combinable with other product
+// discounts — so a T-shirt code and a pullover code work in one order (Shopify
+// never applies two product discounts to the same line) — and with shipping
+// discounts, so a store's automatic free-shipping discount still applies when
+// the code is used. Nothing stacks with order discounts. Whole-shop codes keep
+// using the REST price rule path.
 async function createProductDiscount(sb: any, bs: any, p: any) {
   if (p.value_type !== 'percentage') throw new Error('Product-scoped codes must be percentage discounts');
   const pct = parseFloat(p.value);
@@ -441,7 +442,7 @@ async function createProductDiscount(sb: any, bs: any, p: any) {
     ...(endsAt ? { endsAt } : {}),
     ...(p.usage_limit ? { usageLimit: Number(p.usage_limit) } : {}),
     appliesOncePerCustomer: true,
-    combinesWith: { orderDiscounts: false, productDiscounts: true, shippingDiscounts: false },
+    combinesWith: { orderDiscounts: false, productDiscounts: true, shippingDiscounts: true },
     customerSelection: p.customer_shopify_id ? { customers: { add: [`gid://shopify/Customer/${p.customer_shopify_id}`] } } : { all: true },
     customerGets: {
       value: oneItemFree
@@ -496,6 +497,18 @@ async function createDiscount(sb: any, bs: any, body: any) {
   const { price_rule } = await shopify(bs, `/price_rules.json`, { method: 'POST', body: JSON.stringify(priceRulePayload) });
   const dcPayload = { discount_code: { code } };
   const { discount_code } = await shopify(bs, `/price_rules/${price_rule.id}/discount_codes.json`, { method: 'POST', body: JSON.stringify(dcPayload) });
+  // Price rules can't express combinations, and a code that refuses to combine
+  // knocks a store's automatic free-shipping discount out of the cart. Allow
+  // shipping discounts through the GraphQL node the price rule is also known as.
+  // Best-effort: the code is already live, so a failure here only costs shipping.
+  try {
+    const upd = await shopifyGraphQL(bs, `mutation($id: ID!, $input: DiscountCodeBasicInput!) { discountCodeBasicUpdate(id: $id, basicCodeDiscount: $input) { userErrors { field message } } }`, {
+      id: `gid://shopify/DiscountCodeNode/${price_rule.id}`,
+      input: { combinesWith: { orderDiscounts: false, productDiscounts: false, shippingDiscounts: true } },
+    });
+    const errs = upd?.discountCodeBasicUpdate?.userErrors || [];
+    if (errs.length) throw new Error(errs.map((e: any) => e.message).join('; '));
+  } catch (e) { console.warn('Could not allow shipping discounts on price rule', price_rule.id, e); }
   await sb.from('brandshop_discount_codes').upsert({
     brandshop_id: bs.id, shopify_price_rule_id: price_rule.id, shopify_discount_code_id: discount_code.id,
     code: discount_code.code, value_type, value: parseFloat(value),
