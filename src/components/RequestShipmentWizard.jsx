@@ -711,9 +711,15 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                     onChange={(e) => setReturnEnabled(e.target.checked)}
                     className="accent-blue-600 mt-0.5"
                   />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</span>
+                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                        Separate cost · quoted separately
+                      </span>
+                    </div>
                     <div className="text-xs text-gray-500">We'll collect the items again and bring them back to the warehouse.</div>
+                    <div className="text-xs text-amber-800 mt-0.5">The return is not included in the shipping total below. We send you a separate quote for it.</div>
                   </div>
                 </label>
 
@@ -849,6 +855,9 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                     <div>
                       <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide">Total shipping cost</div>
                       <div className="text-[11px] text-blue-700/80 mt-0.5">{addresses.length} address{addresses.length === 1 ? '' : 'es'} · {totalUnitsRequested} units</div>
+                      {returnEnabled && (
+                        <div className="text-[11px] text-amber-800 mt-1 font-medium">Outbound only · the return shipment is a separate cost, quoted separately.</div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-2xl font-bold text-blue-900">{formatEur(vatInclusive ? grandTotalCents.inclVat : grandTotalCents.exVat)}</div>
@@ -980,7 +989,10 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                         )}
                       </div>
                     </div>
-                    <div className="text-gray-500 mt-2">The shipping total below covers the outbound shipment only.</div>
+                    <div className="mt-2 flex items-start gap-1.5 text-amber-800">
+                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Separate cost</span>
+                      <span>The shipping total below covers the outbound shipment only. The return is quoted separately.</span>
+                    </div>
                   </div>
                 )}
 
