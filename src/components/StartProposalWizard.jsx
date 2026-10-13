@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
-import { fetchMyCatalogueItems } from '../lib/myCatalogue'
+import { fetchMyCatalogueItems, reorderNote, lowestTierPrice } from '../lib/myCatalogue'
 import { Lock } from 'lucide-react'
 import { saveProposalDraft, clearProposalDraft, isDraftMeaningful } from '../lib/proposalDraft'
 import { itemLeadDays, orderLeadDays, rollingEtaDate, formatEtaDate } from '../lib/eta'
@@ -21,6 +21,9 @@ const STEPS = [
   { id: 'team', label: 'Team' },
   { id: 'review', label: 'Review' },
 ]
+
+// Shown on estimates so they match the quote the customer is about to see.
+const VAT_RATE = 0.21
 
 const OCCASIONS = [
   'Employee gift', 'Client gift', 'Event merch', 'Swag bag', 'Onboarding kit',
@@ -44,6 +47,39 @@ function getTierPrice(tiers, qty) {
   const sorted = tiers.filter((t) => !t.is_sample_tier).sort((a, b) => (a.qty_from ?? 0) - (b.qty_from ?? 0))
   if (sorted.length && qty < (sorted[0].qty_from ?? 0)) return sorted[0].sales_price_cents
   return null
+}
+
+// --- ESTIMATE BREAKDOWN (items step + review) ---
+function EstimateBreakdown({ itemsTotal, hasTBD, credit, deliveryFee, vat, total }) {
+  return (
+    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-xs space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">Items</span>
+        <span className="text-gray-900">{formatCents(itemsTotal)}{hasTBD && <span className="text-gray-400"> + TBD items</span>}</span>
+      </div>
+      {credit > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-emerald-700">Merch credit</span>
+          <span className="text-emerald-700">− {formatCents(credit)}</span>
+        </div>
+      )}
+      {deliveryFee > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-gray-500">Delivery</span>
+          <span className="text-gray-900">{formatCents(deliveryFee)}</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">VAT {Math.round(VAT_RATE * 100)}%</span>
+        <span className="text-gray-900">{formatCents(vat)}</span>
+      </div>
+      <div className="flex items-center justify-between border-t border-gray-100 pt-1 font-semibold">
+        <span className="text-gray-700">Estimated total</span>
+        <span className="text-gray-900">{formatCents(total)}</span>
+      </div>
+      <div className="text-[10px] text-gray-400">{hasTBD ? 'Items marked TBD are quoted by our team.' : 'Final amounts on your quote.'}</div>
+    </div>
+  )
 }
 
 // --- CATALOGUE PICKER ---
@@ -224,9 +260,12 @@ function MyCataloguePicker({ company, onPick }) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-gray-900 truncate">{item._design_title || item.name}</div>
-              <div className="text-xs text-gray-500 truncate">{item._custom ? 'Custom design' : `On ${item.name}`}</div>
+              <div className="text-xs text-gray-500 truncate">{item._custom ? (item._design_id ? 'Custom design' : 'Your product') : `On ${item.name}`}</div>
             </div>
-            <div className="text-[10px] text-emerald-600 font-medium inline-flex items-center gap-1"><Star size={10} />Re-order</div>
+            <div className="text-right">
+              <div className="text-[10px] text-emerald-600 font-medium inline-flex items-center gap-1"><Star size={10} />Re-order</div>
+              {lowestTierPrice(item._cc_tiers) != null && <div className="text-[10px] text-gray-500">from {formatCents(lowestTierPrice(item._cc_tiers))}</div>}
+            </div>
           </button>
         ))}
         {filtered.length === 0 && <div className="text-xs text-gray-400 p-6 text-center">No matches.</div>}
@@ -388,12 +427,13 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
   const setupFee = selectedCustomizations.reduce((s, c) => s + (c.setup_fee_cents || 0), 0)
   const unitPrice = baseUnit != null ? baseUnit + surcharge : null
   const subtotal = unitPrice != null && it.quantity ? unitPrice * it.quantity + setupFee : null
-  const hasOptions = it.type === 'catalogue' && (
+  const belowMoq = !!it.moq && (it.quantity ?? 0) > 0 && (it.quantity ?? 0) < it.moq
+  const hasOptions = (it.type === 'catalogue' && (
     (it.available_colours?.length ?? 0) > 0 ||
     hasSizes ||
     (it.available_customizations?.length ?? 0) > 0 ||
     it.pantone_match_available
-  )
+  )) || (it.type === 'custom' && hasSizes)
 
   // Helper: write a size→qty into size_breakdown and recompute total
   const setSizeQty = (s, val) => {
@@ -462,10 +502,11 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               onUpdate(idx, patch)
             }}
             className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
-              (it.quantity ?? 0) > 0 ? 'border-gray-200' : 'border-amber-400 bg-amber-50'
+              (it.quantity ?? 0) > 0 && !belowMoq ? 'border-gray-200' : 'border-amber-400 bg-amber-50'
             }`}
-            title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : (it.quantity ?? 0) > 0 ? undefined : 'Enter a quantity'}
+            title={hasSizes && !!it.size_breakdown ? 'Total is the sum of per-size quantities below' : belowMoq ? `Minimum ${it.moq}` : (it.quantity ?? 0) > 0 ? undefined : 'Enter a quantity'}
           />
+          {it.moq ? <div className={`text-[10px] mt-0.5 ${belowMoq ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>min {it.moq}</div> : null}
         </td>
         <td className="px-3 py-2 text-right text-xs text-gray-700">
           {unitPrice != null ? formatCents(unitPrice) : <span className="text-gray-400">TBD</span>}
@@ -543,8 +584,8 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
               {hasSizes && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-semibold flex items-center gap-2">
-                    <span>Quantity per size</span>
-                    <span className="text-gray-400 normal-case font-normal">Total: <strong className="text-gray-700">{it.quantity ?? 0}</strong></span>
+                    <span>Quantity per {it._options_label || 'size'}</span>
+                    <span className="text-gray-400 normal-case font-normal">Total: <strong className="text-gray-700">{it.quantity ?? 0}</strong>{it.moq ? ` · min ${it.moq}` : ''}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {it.available_sizes.map((s) => (
@@ -982,6 +1023,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   const [step, setStep] = useState(resumeDraft?.step ?? (prefillItems?.length ? 1 : 0))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [done, setDone] = useState(null) // { quoteSent: true } once a priced re-order's quote went out
   const [itemMode, setItemMode] = useState('catalogue')
   const [items, setItems] = useState(() => {
     if (resumeDraft?.items) return resumeDraft.items
@@ -1113,53 +1155,57 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     ])
   }
 
-  // My-catalogue re-order: drop the approved design straight into the cart with
-  // no options to configure (base products keep volume pricing; custom = TBD).
+  // My-catalogue re-order: drop the saved product straight into the cart with the
+  // customer's own price bands, MOQ and the size/variant split it has. Catalogue-
+  // backed rows keep volume pricing (company bands win over global ones); custom
+  // rows are priced from their bands too, or TBD when the team hasn't set any.
   const addFromMyCatalogue = async (mi) => {
+    const optionKeys = mi._available_sizes?.length ? mi._available_sizes : (mi._variants || []).map((v) => v.label)
+    const optionLabel = mi._available_sizes?.length ? 'size' : 'variant'
+    const common = {
+      company_catalogue_id: mi._cc_id || null,
+      description: mi._design_title || mi.name,
+      moq: mi.moq || null,
+      photo_url: mi._design_image || mi.main_photo_url || null,
+      reference_url: mi._design_image || null,
+      source_design_id: mi._design_id || null,
+      notes: reorderNote(mi),
+    }
     if (mi._custom) {
       setItems((arr) => [...arr, {
         type: 'custom',
-        description: mi._design_title || mi.name,
-        quantity: null,
-        photo_url: mi._design_image || null,
-        reference_url: mi._design_image || null,
-        notes: `Re-order of approved design: ${mi._design_title || mi.name}`,
-        source_design_id: mi._design_id || null,
+        ...common,
+        quantity: optionKeys.length ? null : (mi.moq || 50),
+        size_breakdown: null,
         unit_price_cents: null,
+        tiers: mi._cc_tiers || [],
+        available_sizes: optionKeys,
+        _options_label: optionLabel,
       }])
       return
     }
-    const { data: ccLink } = await supabase
-      .from('company_catalogue').select('id').eq('company_id', company.id).eq('catalogue_item_id', mi.id).maybeSingle()
-    const [globalRes, ccRes] = await Promise.all([
-      supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', mi.id).order('qty_from'),
-      ccLink?.id
-        ? supabase.from('company_catalogue_pricing_tiers').select('*').eq('company_catalogue_id', ccLink.id).order('qty_from')
-        : Promise.resolve({ data: [] }),
-    ])
-    const customT = ccRes.data ?? []
-    const globalT = (globalRes.data ?? []).filter((t) => !t.is_sample_tier)
-    const tiers = customT.length ? customT : globalT
+    let tiers = mi._cc_tiers || []
+    if (!tiers.length) {
+      const { data } = await supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', mi.id).order('qty_from')
+      tiers = (data ?? []).filter((t) => !t.is_sample_tier)
+    }
     const locked = mi._locked_spec || null
     setItems((arr) => [...arr, {
       type: 'catalogue',
       catalogue_item_id: mi.id,
-      description: mi._design_title || mi.name,
+      ...common,
       category: mi.category,
-      photo_url: mi._design_image || mi.main_photo_url,
-      quantity: mi.moq_sales || 50,
-      reference_url: mi._design_image || null,
-      source_design_id: mi._design_id || null,
-      notes: `Re-order of approved design: ${mi._design_title || mi.name}`,
+      quantity: mi.moq || mi.moq_sales || 50,
       tiers,
       _leadDays: itemLeadDays(mi),
       colour_choice: locked?.colour_choice || null,
       size_breakdown: locked?.size_breakdown || null,
       pantone_code: locked?.pantone_code || null,
       pantone_selected: !!locked?.pantone_code,
-      // Locked re-order — no option pickers in the cart.
+      // Locked re-order — no option pickers in the cart beyond the product's own split.
       available_colours: [],
-      available_sizes: [],
+      available_sizes: optionKeys,
+      _options_label: optionLabel,
       available_customizations: [],
       customization_choice_ids: (locked?.customization_choices || []).map((c) => c.id).filter(Boolean),
     }])
@@ -1188,6 +1234,12 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   const maxCredit = Math.max(0, Math.min(merchBalance, totalCents.total))
   const creditApplied = Math.max(0, Math.min(merchCreditApplied, maxCredit))
   const estimateAfterCredit = Math.max(0, totalCents.total - creditApplied)
+  // Flat delivery fee the team agreed with this account, and VAT on top, so the
+  // estimate matches the quote the customer is about to see.
+  const deliveryFee = company?.flat_delivery_fee_cents || 0
+  const estimateNet = items.length > 0 ? estimateAfterCredit + deliveryFee : 0
+  const estimateVat = Math.round(estimateNet * VAT_RATE)
+  const estimateTotal = estimateNet + estimateVat
 
   // Rolling order ETA — the order is gated by the slowest item.
   const orderEta = useMemo(() => {
@@ -1210,7 +1262,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
   }
   // Every item needs a quantity before we can price / move on — except the
   // "let our team suggest ideas" line, which is intentionally open-ended.
-  const allItemsHaveQty = items.length > 0 && items.every((it) => it.is_suggestion || (it.quantity ?? 0) > 0)
+  const allItemsHaveQty = items.length > 0 && items.every((it) => it.is_suggestion || ((it.quantity ?? 0) > 0 && !(it.moq && (it.quantity ?? 0) < it.moq)))
 
   const hasSuggestion = items.some((it) => it.is_suggestion)
   const toggleSuggestion = () => setItems((arr) =>
@@ -1309,6 +1361,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
           proposal_id: proposal.id,
           company_id: company.id,
           catalogue_item_id: it.catalogue_item_id || null,
+          company_catalogue_id: it.company_catalogue_id || null,
           description: it.description,
           quantity: it.quantity || null,
           reference_url: it.reference_url,
@@ -1343,11 +1396,40 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
       if (pcErr) { setSubmitting(false); setError(pcErr.message); return }
     }
 
+    // A pure My-Catalogue re-order is priced from the saved bands, so its quote can go
+    // out right away: the routine flips it to "sent" (which emails the customer) only
+    // when every line carries a price; otherwise it stays a draft for the team.
+    let quoteSent = false
+    const pureReorder = items.length > 0 && items.every((it) => it.company_catalogue_id)
+    if (pureReorder) {
+      const { data: sendRes, error: sendErr } = await supabase.rpc('send_customer_quote', { p_proposal_id: proposal.id })
+      if (sendErr) console.warn('send_customer_quote failed:', sendErr.message)
+      quoteSent = !!sendRes?.sent
+    }
+
     // Submitted — wipe the in-progress draft
     clearProposalDraft(company.id)
     setSubmitting(false)
+    if (quoteSent) { setDone({ quoteSent: true }); return }
     onCreated?.()
     onClose()
+  }
+
+  if (done?.quoteSent) {
+    const finish = () => { onCreated?.({ quoteSent: true }); onClose() }
+    return (
+      <div translate="no" className="notranslate fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={finish}>
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 text-center space-y-3" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center"><Check size={24} /></div>
+          <h2 className="text-lg font-semibold text-gray-900">Your quote is ready</h2>
+          <p className="text-sm text-gray-600">
+            We priced your re-order from your saved prices{deliveryFee > 0 ? ` and added ${formatCents(deliveryFee)} delivery` : ''}.
+            Review and accept it under Quotes — production starts once it's accepted and invoiced.
+          </p>
+          <PrimaryButton onClick={finish} className="w-full justify-center">View quote</PrimaryButton>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1497,8 +1579,11 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                 <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
                 {items.length > 0 && !allItemsHaveQty && (
                   <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-flex items-center gap-1.5">
-                    <Package size={12} />Enter a quantity for every item to continue.
+                    <Package size={12} />Enter a quantity (at least the minimum) for every item to continue.
                   </div>
+                )}
+                {items.length > 0 && (
+                  <EstimateBreakdown itemsTotal={totalCents.total} hasTBD={totalCents.hasTBD} credit={creditApplied} deliveryFee={deliveryFee} vat={estimateVat} total={estimateTotal} />
                 )}
               </div>
               {orderEta && (
@@ -1689,12 +1774,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
                 <div>
                   <div className="text-xs text-gray-500 mb-1">Items ({items.length})</div>
                   <Cart items={items} onUpdate={updateItem} onRemove={removeItem} />
-                  <div className="flex items-center justify-between pt-2 text-xs">
-                    <span className="text-gray-500">Estimate</span>
-                    <span className="text-gray-900 font-semibold">
-                      {formatCents(totalCents.total)}{totalCents.hasTBD && ' + TBD items'}
-                    </span>
-                  </div>
+                  <EstimateBreakdown itemsTotal={totalCents.total} hasTBD={totalCents.hasTBD} credit={creditApplied} deliveryFee={deliveryFee} vat={estimateVat} total={estimateTotal} />
 
                   {/* Loyalty / merch credit — apply available balance to this proposal */}
                   {merchBalance > 0 && (

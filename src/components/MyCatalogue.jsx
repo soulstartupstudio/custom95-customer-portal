@@ -56,7 +56,7 @@ export default function MyCatalogue({ company, contact, onStartProposalWithItems
       name: `Re-order — ${prefilledItem.description}`,
       occasion: 'Other',
       occasion_other: 'Re-order',
-      brief_notes: `Re-order of the approved design "${prefilledItem.description}".`,
+      brief_notes: `Re-order of "${prefilledItem.description}" from My Catalogue.`,
     })
   }
 
@@ -107,7 +107,6 @@ export default function MyCatalogue({ company, contact, onStartProposalWithItems
           company={company}
           contact={contact}
           onClose={() => setReorderItem(null)}
-          onAdded={() => setReorderItem(null)}
           onStartNewProposal={startNewFromReorder}
         />
       )}
