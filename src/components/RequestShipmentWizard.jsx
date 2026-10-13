@@ -27,6 +27,17 @@ const formatEur = (cents) => new Intl.NumberFormat('nl-NL', { style: 'currency',
 const MIN_NOTICE_WORKING_DAYS = 3
 const EXPRESS_ONLY_WORKING_DAYS = 7
 const isExpress = (opt) => opt.id === 'express' || /express/i.test(opt.carrier || '')
+const isStandard = (opt) => opt.id === 'standard' || /standard/i.test(opt.carrier || '')
+
+// The Standard service is marked with the word itself instead of a truck icon.
+function StandardMark({ active }) {
+  return (
+    <svg width="52" height="16" viewBox="0 0 52 16" aria-label="Standard" role="img" className="flex-shrink-0 mt-0.5">
+      <rect x="0.5" y="0.5" width="51" height="15" rx="4" fill={active ? '#2563eb' : '#f3f4f6'} stroke={active ? '#2563eb' : '#d1d5db'} />
+      <text x="26" y="11.2" textAnchor="middle" fontFamily="ui-sans-serif, system-ui, sans-serif" fontSize="7.5" fontWeight="700" letterSpacing="0.6" fill={active ? '#ffffff' : '#4b5563'}>STANDARD</text>
+    </svg>
+  )
+}
 // Local yyyy-mm-dd for <input type="date"> (toISOString would shift the day in UTC+ zones).
 const toDateInput = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
@@ -352,7 +363,14 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const expressOnlyUntil = toDateInput(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))
   const dateTooEarly = !shipAsap && !!shipDate && shipDate < minDeliveryDate
   const expressOnly = shipAsap || (!!shipDate && !dateTooEarly && shipDate <= expressOnlyUntil)
-  const optionAllowed = (opt) => !expressOnly || isExpress(opt)
+  // A service can be picked when the delivery date allows it: inside the
+  // express-only window only Express; otherwise only services whose estimated
+  // arrival (today + transit days) is on or before the requested delivery date.
+  const optionAllowed = (opt) => {
+    if (expressOnly) return isExpress(opt)
+    if (!shipAsap && shipDate && opt.etaDate && toDateInput(opt.etaDate) > shipDate) return false
+    return true
+  }
 
   // Load the editable shipping config (set up by the team in Warehouse → Shipment rates).
   useEffect(() => {
@@ -481,20 +499,21 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     return { exVat, inclVat: Math.round(exVat * (1 + VAT_RATE)) }
   }, [perAddress, chosenOptionByAddress])
 
-  // When the delivery date only allows Express, move any other choice over to it.
+  // When the delivery date rules out the chosen service, move the choice to the
+  // cheapest service that is still possible (if any).
   useEffect(() => {
-    if (!expressOnly) return
     setChosenOptionByAddress((prev) => {
       const next = { ...prev }
       let dirty = false
       for (const p of perAddress) {
         const chosen = p.options.find((o) => o.id === next[p.addr.id])
-        const express = p.options.find(isExpress)
-        if (express && (!chosen || !isExpress(chosen))) { next[p.addr.id] = express.id; dirty = true }
+        if (chosen && optionAllowed(chosen)) continue
+        const fallback = p.options.filter(optionAllowed).sort((a, b) => a.total - b.total)[0]
+        if (fallback && fallback.id !== next[p.addr.id]) { next[p.addr.id] = fallback.id; dirty = true }
       }
       return dirty ? next : prev
     })
-  }, [expressOnly, perAddress])
+  }, [expressOnly, shipAsap, shipDate, perAddress])
 
   const allAddressesPriced = perAddress.length > 0 && perAddress.every((p) => {
     const optId = chosenOptionByAddress[p.addr.id]
@@ -799,20 +818,18 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                         <AlertCircle size={12} />No carrier available for <strong>{p.country || p.addr.country || 'this country'}</strong>. Pick a different destination or contact your account manager.
                       </div>
                     ) : (
-                      p.options.map((opt) => {
-                        const allowed = optionAllowed(opt)
-                        const active = allowed && chosenOptionByAddress[p.addr.id] === opt.id
-                        const Icon = opt.id === 'express' ? Zap : opt.id === 'hive' ? Leaf : Truck
+                      p.options.filter(optionAllowed).map((opt) => {
+                        const active = chosenOptionByAddress[p.addr.id] === opt.id
+                        const Icon = isExpress(opt) ? Zap : opt.id === 'hive' ? Leaf : isStandard(opt) ? null : Truck
                         return (
                           <button
                             key={opt.id}
                             type="button"
-                            disabled={!allowed}
                             onClick={() => setChosenOptionByAddress((prev) => ({ ...prev, [p.addr.id]: opt.id }))}
-                            className={`w-full text-left p-3 border-2 rounded-lg transition-colors ${!allowed ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed' : active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                            className={`w-full text-left p-3 border-2 rounded-lg transition-colors ${active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
                           >
                             <div className="flex items-start gap-3">
-                              <Icon size={16} className={active ? 'text-blue-600' : 'text-gray-400'} />
+                              {Icon ? <Icon size={16} className={active ? 'text-blue-600' : 'text-gray-400'} /> : <StandardMark active={active} />}
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-sm font-semibold text-gray-900">{opt.carrier}</span>
@@ -826,7 +843,6 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                                   <span>{opt.boxes} box{opt.boxes === 1 ? '' : 'es'}</span>
                                 </div>
                                 <div className="text-[10px] text-gray-400 mt-0.5">{opt.sub}</div>
-                                {!allowed && <div className="text-[11px] text-gray-600 mt-0.5">Not available for {shipAsap ? 'ASAP delivery' : 'this delivery date'} — Express only.</div>}
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <div className="text-sm font-bold text-gray-900">
@@ -839,9 +855,18 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                         )
                       })
                     )}
-                    {expressOnly && p.options.length > 0 && !p.options.some(isExpress) && (
+                    {p.options.length > 0 && !p.options.some(optionAllowed) && (
                       <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
-                        <AlertCircle size={12} className="flex-shrink-0" />Express is not available for this destination. Choose a delivery date after {formatEtaDate(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))}.
+                        <AlertCircle size={12} className="flex-shrink-0" />
+                        {expressOnly
+                          ? <>Express is not available for this destination. Choose a delivery date after {formatEtaDate(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))}.</>
+                          : <>No service can deliver here by {formatDate(shipDate)}. Choose a later delivery date.</>}
+                      </div>
+                    )}
+                    {p.options.length > 0 && p.options.some(optionAllowed) && p.options.some((o) => !optionAllowed(o)) && (
+                      <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                        <Clock size={11} className="flex-shrink-0" />
+                        Only services that can deliver {shipAsap ? 'ASAP' : `by ${formatDate(shipDate)}`} are shown. {expressOnly ? `For other services, choose a delivery date after ${formatEtaDate(etaDateFromDays(EXPRESS_ONLY_WORKING_DAYS))}.` : 'Pick a later delivery date to see more.'}
                       </div>
                     )}
                   </div>
