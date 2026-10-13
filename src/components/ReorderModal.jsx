@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Check, RotateCw, Package, Truck } from 'lucide-react'
-import { PrimaryButton, SecondaryButton, formatCents } from './ui'
+import { PrimaryButton, SecondaryButton, formatCents, formatCentsExact } from './ui'
 import { itemLeadDays } from '../lib/eta'
 import { sortTiers, reorderNote } from '../lib/myCatalogue'
 
@@ -185,19 +185,19 @@ export default function ReorderModal({ item, company, contact, onClose, onStartN
           {/* Price */}
           <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-1.5">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-700">{effectiveQty} × {unitPrice != null ? formatCents(unitPrice) : <span className="text-gray-400">TBD</span>}</span>
-              <span className="font-semibold text-blue-900">{lineTotal != null ? formatCents(lineTotal) : 'Quoted by our team'}</span>
+              <span className="text-gray-700">{effectiveQty} × {unitPrice != null ? formatCentsExact(unitPrice) : <span className="text-gray-400">TBD</span>}</span>
+              <span className="font-semibold text-blue-900">{lineTotal != null ? formatCentsExact(lineTotal) : (effectiveQty > 0 ? 'Quoted by our team' : '—')}</span>
             </div>
             {deliveryFee > 0 && (
               <div className="flex items-center justify-between text-xs text-gray-700">
                 <span className="inline-flex items-center gap-1"><Truck size={12} className="text-gray-400" />Delivery</span>
-                <span>{formatCents(deliveryFee)}</span>
+                <span>{formatCentsExact(deliveryFee)}</span>
               </div>
             )}
             {netEstimate != null && deliveryFee > 0 && (
               <div className="flex items-center justify-between text-xs font-semibold text-gray-900 border-t border-blue-200/70 pt-1.5">
                 <span>Total excl. VAT</span>
-                <span>{formatCents(netEstimate)}</span>
+                <span>{formatCentsExact(netEstimate)}</span>
               </div>
             )}
             {tiers.length > 0 && (
@@ -206,14 +206,16 @@ export default function ReorderModal({ item, company, contact, onClose, onStartN
                   const inTier = effectiveQty >= (t.qty_from ?? 0) && (t.qty_to == null || effectiveQty <= t.qty_to)
                   return (
                     <span key={t.id} className={`text-[10px] px-1.5 py-0.5 rounded-full ring-1 ring-inset ${inTier ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-gray-500 ring-gray-200'}`}>
-                      {t.qty_from}{t.qty_to ? `–${t.qty_to}` : '+'}: {formatCents(t.sales_price_cents)}
+                      {t.qty_from}{t.qty_to ? `–${t.qty_to}` : '+'}: {formatCentsExact(t.sales_price_cents)}
                     </span>
                   )
                 })}
               </div>
             )}
             <div className="text-[10px] text-blue-700/70">
-              {lineTotal != null ? 'Prices excl. VAT — your quote is ready to accept as soon as you submit.' : 'Above the listed quantities our team quotes the price for you.'}
+              {lineTotal != null || effectiveQty === 0
+                ? 'Prices excl. VAT — your quote is ready to accept as soon as you submit.'
+                : 'Above the listed quantities our team quotes the price for you.'}
             </div>
           </div>
 
@@ -223,7 +225,7 @@ export default function ReorderModal({ item, company, contact, onClose, onStartN
         <div className="px-5 py-4 border-t border-gray-200 flex items-center gap-2">
           <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
           <PrimaryButton onClick={startNew} disabled={!canStart} className="flex-1 justify-center">
-            <RotateCw size={16} />Start a proposal{lineTotal != null && <span className="ml-1 font-normal text-blue-100">· {formatCents(lineTotal)}</span>}
+            <RotateCw size={16} />Start a proposal{lineTotal != null && <span className="ml-1 font-normal text-blue-100">· {formatCentsExact(lineTotal)}</span>}
           </PrimaryButton>
         </div>
       </div>

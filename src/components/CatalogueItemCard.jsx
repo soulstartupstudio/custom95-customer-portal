@@ -1,5 +1,5 @@
 import { Package, Leaf, Globe, Paintbrush, Sparkles, CheckCircle2, RotateCw } from 'lucide-react'
-import { formatCents } from './ui'
+import { formatCentsExact } from './ui'
 import { lowestTierPrice } from '../lib/myCatalogue'
 
 // Shared catalogue card. Renders both browse-all products and My-Catalogue
@@ -47,7 +47,7 @@ export default function CatalogueItemCard({ item, coloursByItem = {}, customizat
             <div className="text-[10px] text-gray-400">{item.moq_sales ? `MOQ ${item.moq_sales}` : ''}</div>
           )}
           {isReorder && fromPrice != null ? (
-            <span className="text-[10px] text-gray-600">from <strong className="text-gray-800">{formatCents(fromPrice)}</strong></span>
+            <span className="text-[10px] text-gray-600">from <strong className="text-gray-800">{formatCentsExact(fromPrice)}</strong></span>
           ) : colours.length > 0 && (
             <div className="flex items-center -space-x-1" title={`${colours.length} colour${colours.length === 1 ? '' : 's'} available`}>
               {colours.slice(0, 4).map((c) => (

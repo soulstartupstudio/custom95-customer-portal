@@ -5,7 +5,7 @@ import {
   Package, FileText, Plus, Trash2, Search, Upload, Image as ImageIcon, Star,
   MapPin, Users, Mail, Phone,
 } from 'lucide-react'
-import { PrimaryButton, SecondaryButton, formatCents } from './ui'
+import { PrimaryButton, SecondaryButton, formatCents, formatCentsExact } from './ui'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
 import { fetchMyCatalogueItems, reorderNote, lowestTierPrice } from '../lib/myCatalogue'
 import { Lock } from 'lucide-react'
@@ -55,27 +55,27 @@ function EstimateBreakdown({ itemsTotal, hasTBD, credit, deliveryFee, vat, total
     <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-xs space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-gray-500">Items</span>
-        <span className="text-gray-900">{formatCents(itemsTotal)}{hasTBD && <span className="text-gray-400"> + TBD items</span>}</span>
+        <span className="text-gray-900">{formatCentsExact(itemsTotal)}{hasTBD && <span className="text-gray-400"> + TBD items</span>}</span>
       </div>
       {credit > 0 && (
         <div className="flex items-center justify-between">
           <span className="text-emerald-700">Merch credit</span>
-          <span className="text-emerald-700">− {formatCents(credit)}</span>
+          <span className="text-emerald-700">− {formatCentsExact(credit)}</span>
         </div>
       )}
       {deliveryFee > 0 && (
         <div className="flex items-center justify-between">
           <span className="text-gray-500">Delivery</span>
-          <span className="text-gray-900">{formatCents(deliveryFee)}</span>
+          <span className="text-gray-900">{formatCentsExact(deliveryFee)}</span>
         </div>
       )}
       <div className="flex items-center justify-between">
         <span className="text-gray-500">VAT {Math.round(VAT_RATE * 100)}%</span>
-        <span className="text-gray-900">{formatCents(vat)}</span>
+        <span className="text-gray-900">{formatCentsExact(vat)}</span>
       </div>
       <div className="flex items-center justify-between border-t border-gray-100 pt-1 font-semibold">
         <span className="text-gray-700">Estimated total</span>
-        <span className="text-gray-900">{formatCents(total)}</span>
+        <span className="text-gray-900">{formatCentsExact(total)}</span>
       </div>
       <div className="text-[10px] text-gray-400">{hasTBD ? 'Items marked TBD are quoted by our team.' : 'Final amounts on your quote.'}</div>
     </div>
@@ -264,7 +264,7 @@ function MyCataloguePicker({ company, onPick }) {
             </div>
             <div className="text-right">
               <div className="text-[10px] text-emerald-600 font-medium inline-flex items-center gap-1"><Star size={10} />Re-order</div>
-              {lowestTierPrice(item._cc_tiers) != null && <div className="text-[10px] text-gray-500">from {formatCents(lowestTierPrice(item._cc_tiers))}</div>}
+              {lowestTierPrice(item._cc_tiers) != null && <div className="text-[10px] text-gray-500">from {formatCentsExact(lowestTierPrice(item._cc_tiers))}</div>}
             </div>
           </button>
         ))}
@@ -509,7 +509,7 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
           {it.moq ? <div className={`text-[10px] mt-0.5 ${belowMoq ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>min {it.moq}</div> : null}
         </td>
         <td className="px-3 py-2 text-right text-xs text-gray-700">
-          {unitPrice != null ? formatCents(unitPrice) : <span className="text-gray-400">TBD</span>}
+          {unitPrice != null ? formatCentsExact(unitPrice) : <span className="text-gray-400">TBD</span>}
         </td>
         <td className="px-3 py-2 text-right text-xs font-medium text-gray-900">
           {subtotal != null ? formatCents(subtotal) : <span className="text-gray-400">TBD</span>}
@@ -1423,7 +1423,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
           <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center"><Check size={24} /></div>
           <h2 className="text-lg font-semibold text-gray-900">Your quote is ready</h2>
           <p className="text-sm text-gray-600">
-            We priced your re-order from your saved prices{deliveryFee > 0 ? ` and added ${formatCents(deliveryFee)} delivery` : ''}.
+            We priced your re-order from your saved prices{deliveryFee > 0 ? ` and added ${formatCentsExact(deliveryFee)} delivery` : ''}.
             Review and accept it under Quotes — production starts once it's accepted and invoiced.
           </p>
           <PrimaryButton onClick={finish} className="w-full justify-center">View quote</PrimaryButton>

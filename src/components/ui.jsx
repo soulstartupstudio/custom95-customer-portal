@@ -168,6 +168,13 @@ export function formatCents(cents) {
   return '€' + (cents / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+// Per-piece prices and price bands need the cents: a €0.05 postcard or a €2.10
+// totebag must not read as "€0" / "€2". Totals keep formatCents.
+export function formatCentsExact(cents) {
+  if (cents == null) return '—'
+  return '€' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 /**
  * Mirrors the team app's quote math.
  * Stored `subtotal_cents` is (line items subtotal − discount + delivery).
