@@ -38,7 +38,7 @@ function Section({ eyebrow, title, children }) {
 
 function Centered({ children }) {
   return (
-    <div className="min-h-screen bg-[#f6f6f4] flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#F9F3EE] flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-white rounded-2xl border border-gray-200/80 p-8 text-center">{children}</div>
     </div>
   )
@@ -141,7 +141,7 @@ export default function PlanActivation({ token, preview = false }) {
       ['Your Merch Plan', 'We build your Merch Calendar, Core Collection and 90-day or year plan — and your first projects go into motion.'],
     ]
     return (
-      <div className="min-h-screen bg-[#f6f6f4] py-10 sm:py-16 px-4">
+      <div className="min-h-screen bg-[#F9F3EE] py-10 sm:py-16 px-4">
         <div className="max-w-xl mx-auto">
           <img src={LOGO} alt="Custom95" className="h-9 mb-8" />
           <div className="bg-white rounded-2xl border border-gray-200/80 p-7 sm:p-9">
@@ -183,7 +183,7 @@ export default function PlanActivation({ token, preview = false }) {
   const agreementUnavailable = d.state === 'agreement_unavailable'
 
   return (
-    <div className="min-h-screen bg-[#f6f6f4] pb-28 sm:pb-16">
+    <div className="min-h-screen bg-[#F9F3EE] pb-28 sm:pb-16">
       {preview && <div className="bg-amber-100 text-amber-900 text-center text-xs py-2 px-4">Preview — this is what your customer sees. Activation is switched off and views aren't counted.</div>}
       <header className="max-w-3xl mx-auto px-4 pt-10 sm:pt-14 pb-6">
         <img src={LOGO} alt="Custom95" className="h-9 mb-8" />

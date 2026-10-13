@@ -129,21 +129,21 @@ export default function Layout({ session, contact, company }) {
   return (
     <div className="min-h-screen flex">
       {/* MOBILE TOP BAR (md:hidden) */}
-      <header className="md:hidden fixed top-0 inset-x-0 z-30 bg-white border-b border-gray-200 h-14 flex items-center px-3 gap-2">
+      <header className="md:hidden fixed top-0 inset-x-0 z-30 bg-black text-white h-14 flex items-center px-3 gap-2">
         <button
           onClick={() => setMobileNavOpen(true)}
-          className="p-2 -ml-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+          className="p-2 -ml-2 text-white/80 hover:bg-white/10 rounded-lg"
           aria-label="Open menu"
         >
           <Menu size={20} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 leading-tight">{activeLabel || 'Custom95'}</div>
-          <div className="text-[11px] text-gray-400 truncate leading-tight">{company?.name || 'Customer Portal'}</div>
+          <div className="text-sm font-bold text-white leading-tight">{activeLabel || 'Custom95'}</div>
+          <div className="text-[11px] text-white/50 truncate leading-tight">{company?.name || 'Customer Portal'}</div>
         </div>
         <button
           onClick={openWizard}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 active:scale-[0.97] transition-transform duration-150"
         >
           <Plus size={13} />New
         </button>
@@ -156,18 +156,19 @@ export default function Layout({ session, contact, company }) {
 
       {/* SIDEBAR — fixed on desktop, slide-out on mobile */}
       <aside
-        className={`fixed top-0 left-0 z-50 w-64 md:w-56 h-full bg-white border-r border-gray-200 flex flex-col transition-transform md:translate-x-0 ${
+        className={`fixed top-0 left-0 z-50 w-64 md:w-56 h-full bg-black text-white flex flex-col transition-transform md:translate-x-0 ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Custom95</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{company?.name || 'Customer Portal'}</p>
+        <div className="p-5 flex items-start justify-between">
+          <div className="min-w-0">
+            {/* Supplied wordmark artwork — never retype or redraw it. */}
+            <img src="/brand/logo-wordmark-white.svg" alt="Custom95" className="h-5 w-auto" />
+            <p className="text-xs text-white/50 mt-2 truncate">{company?.name || 'Customer Portal'}</p>
           </div>
           <button
             onClick={() => setMobileNavOpen(false)}
-            className="md:hidden -mr-1 text-gray-400 hover:text-gray-600 p-1"
+            className="md:hidden -mr-1 text-white/50 hover:text-white p-1"
             aria-label="Close menu"
           >
             <X size={18} />
@@ -177,7 +178,7 @@ export default function Layout({ session, contact, company }) {
         <div className="px-3 pt-3">
           <button
             onClick={() => { setMobileNavOpen(false); openWizard() }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 active:scale-[0.97] transition-[background-color,transform] duration-150"
           >
             <Plus size={16} />Start proposal
           </button>
@@ -190,8 +191,8 @@ export default function Layout({ session, contact, company }) {
               onClick={() => setActiveTab(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === id
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-white/75 hover:bg-white/10 hover:text-white'
               }`}
             >
               <Icon size={18} />
@@ -200,18 +201,18 @@ export default function Layout({ session, contact, company }) {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-gray-200">
+        <div className="p-3 border-t border-white/15">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-semibold">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
               {contactName?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700 truncate">{contactName}</p>
-              <p className="text-xs text-gray-400 truncate">{session.user.email}</p>
+              <p className="text-sm font-medium text-white truncate">{contactName}</p>
+              <p className="text-xs text-white/50 truncate">{session.user.email}</p>
             </div>
             <button
               onClick={() => supabase.auth.signOut()}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-white/50 hover:text-white"
               title="Sign out"
             >
               <LogOut size={16} />

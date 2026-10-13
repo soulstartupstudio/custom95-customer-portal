@@ -45,7 +45,7 @@ export default function CatalogueItemCard({ item, coloursByItem = {}, customizat
                 <span
                   key={c.id}
                   className="w-3.5 h-3.5 rounded-full border border-white ring-1 ring-gray-200"
-                  style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
+                  style={{ backgroundColor: c.hex_code || '#E7DACE' }}
                   title={c.colour_name}
                 />
               ))}

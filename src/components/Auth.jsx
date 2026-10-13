@@ -74,9 +74,10 @@ export default function Auth() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Custom95</h1>
-          <p className="text-sm text-gray-500 mt-1">Customer Portal</p>
+        <div className="flex flex-col items-center text-center mb-8">
+          {/* Supplied wordmark artwork — never retype or redraw it. */}
+          <img src="/brand/logo-wordmark-black.svg" alt="Custom95" className="h-8 w-auto" />
+          <p className="eyebrow mt-3">Customer Portal</p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

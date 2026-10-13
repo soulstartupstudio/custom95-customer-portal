@@ -396,7 +396,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
               <div className="flex flex-wrap gap-2 text-sm">
                 {colour && (
                   <span className="inline-flex items-center gap-1.5 bg-white border border-gray-200 rounded-full px-2.5 py-1">
-                    <span className="w-3.5 h-3.5 rounded-full ring-1 ring-gray-200" style={{ backgroundColor: colour.hex_code || '#e5e7eb' }} />
+                    <span className="w-3.5 h-3.5 rounded-full ring-1 ring-gray-200" style={{ backgroundColor: colour.hex_code || '#E7DACE' }} />
                     {colour.colour_name}
                   </span>
                 )}
@@ -435,7 +435,7 @@ export default function CatalogueDetail({ item, company, contact, designContext 
                       className={`group relative w-12 h-12 rounded-lg border-2 ${active ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
                       title={c.colour_name}
                     >
-                      <div className="w-full h-full rounded-md" style={{ backgroundColor: c.hex_code || '#e5e7eb' }} />
+                      <div className="w-full h-full rounded-md" style={{ backgroundColor: c.hex_code || '#E7DACE' }} />
                       {active && (
                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
                           <Check size={10} className="text-white" />

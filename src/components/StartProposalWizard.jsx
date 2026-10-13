@@ -500,7 +500,7 @@ function CartRow({ item: it, idx, onUpdate, onRemove }) {
                           onClick={() => onUpdate(idx, { colour_choice: c.colour_name, pantone_selected: false, pantone_code: null })}
                           className={`w-8 h-8 rounded-md border-2 ${active ? 'border-blue-500 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
                           title={c.colour_name}
-                          style={{ backgroundColor: c.hex_code || '#e5e7eb' }}
+                          style={{ backgroundColor: c.hex_code || '#E7DACE' }}
                         />
                       )
                     })}
