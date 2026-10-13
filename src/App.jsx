@@ -120,7 +120,7 @@ function PortalApp() {
 
       const { data: co, error: coErr } = await supabase
         .from('companies')
-        .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier, am_user_id')
+        .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier, am_user_id, flat_delivery_fee_cents')
         .eq('id', row.company_id)
         .single()
       if (cancelled) return

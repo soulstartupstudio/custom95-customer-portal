@@ -255,9 +255,11 @@ export default function Layout({ session, contact, company }) {
             // The wizard saves on every change, so re-read whatever it left behind
             if (company?.id) setDraft(readProposalDraft(company.id))
           }}
-          onCreated={() => {
+          onCreated={(info) => {
             setRefreshKey((k) => k + 1)
-            setActiveTab('proposals')
+            // A re-order priced from My Catalogue already has its quote sent — take the
+            // customer straight to it instead of the proposals list.
+            setActiveTab(info?.quoteSent ? 'quotes' : 'proposals')
             setWizardPrefill(null)
             setWizardPrefillMulti(null)
             setWizardResume(null)
