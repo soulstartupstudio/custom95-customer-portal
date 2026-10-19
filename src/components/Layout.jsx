@@ -1,24 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
   Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X, Handshake
 } from 'lucide-react'
-import DashboardPage from '../pages/DashboardPage'
-import SettingsPage from '../pages/SettingsPage'
-import ProposalsPage from '../pages/ProposalsPage'
-import QuotesPage from '../pages/QuotesPage'
-import DesignsPage from '../pages/DesignsPage'
-import ProjectsPage from '../pages/ProjectsPage'
-import InvoicesPage from '../pages/InvoicesPage'
-import WarehousePage from '../pages/WarehousePage'
-import CataloguePage from '../pages/CataloguePage'
-import ContactsPage from '../pages/ContactsPage'
-import BrandshopPage from '../pages/BrandshopPage'
-import BrandPage from '../pages/BrandPage'
-import YourPlanPage from '../pages/YourPlanPage'
-import MerchAuditPage from '../pages/MerchAuditPage'
-import StartProposalWizard from './StartProposalWizard'
+// Pages load on demand. Eagerly importing all fourteen (plus the 1,800-line
+// proposal wizard) meant every customer downloaded Brandshop, Warehouse and the
+// wizard before anything rendered — even to read the one-screen Your Plan tab.
+// Each page is its own chunk now; only the one being viewed is fetched.
+const DashboardPage = lazy(() => import('../pages/DashboardPage'))
+const SettingsPage = lazy(() => import('../pages/SettingsPage'))
+const ProposalsPage = lazy(() => import('../pages/ProposalsPage'))
+const QuotesPage = lazy(() => import('../pages/QuotesPage'))
+const DesignsPage = lazy(() => import('../pages/DesignsPage'))
+const ProjectsPage = lazy(() => import('../pages/ProjectsPage'))
+const InvoicesPage = lazy(() => import('../pages/InvoicesPage'))
+const WarehousePage = lazy(() => import('../pages/WarehousePage'))
+const CataloguePage = lazy(() => import('../pages/CataloguePage'))
+const ContactsPage = lazy(() => import('../pages/ContactsPage'))
+const BrandshopPage = lazy(() => import('../pages/BrandshopPage'))
+const BrandPage = lazy(() => import('../pages/BrandPage'))
+const YourPlanPage = lazy(() => import('../pages/YourPlanPage'))
+const MerchAuditPage = lazy(() => import('../pages/MerchAuditPage'))
+const StartProposalWizard = lazy(() => import('./StartProposalWizard'))
 import WhatsAppButton from './WhatsAppButton'
 import ProposalDraftWidget from './ProposalDraftWidget'
 import { readProposalDraft, clearProposalDraft } from '../lib/proposalDraft'
@@ -223,7 +227,9 @@ export default function Layout({ session, contact, company }) {
 
       <main className="flex-1 md:ml-56 pt-14 md:pt-0">
         <div className="p-4 sm:p-6 max-w-7xl">
-          {renderContent()}
+          <Suspense fallback={<div className="py-20 flex justify-center"><Spinner /></div>}>
+            {renderContent()}
+          </Suspense>
         </div>
       </main>
 
@@ -240,6 +246,7 @@ export default function Layout({ session, contact, company }) {
       )}
 
       {wizardOpen && (
+        <Suspense fallback={null}>
         <StartProposalWizard
           company={company}
           contact={contact}
@@ -266,6 +273,7 @@ export default function Layout({ session, contact, company }) {
             setDraft(null)
           }}
         />
+        </Suspense>
       )}
     </div>
   )

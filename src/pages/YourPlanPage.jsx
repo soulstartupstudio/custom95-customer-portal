@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, FileText, X, Mail, ClipboardList, ArrowRight, ShieldCheck } from 'lucide-react'
-import { PageHeader, Spinner, PrimaryButton, SecondaryButton, Badge, formatCents, formatDate } from '../components/ui'
+import { PageHeader, PrimaryButton, SecondaryButton, Badge, formatCents, formatDate } from '../components/ui'
 import GettingStarted from '../components/GettingStarted'
 import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
 import { fetchPortalPlan } from '../lib/portalPlan'
@@ -21,7 +21,25 @@ export default function YourPlanPage({ company, navigate }) {
     return () => { cancelled = true }
   }, [company?.id])
 
-  if (state.loading) return <div className="py-20 flex justify-center"><Spinner /></div>
+  // Render the page straight away and skeleton only the parts that are still
+  // loading. This tab is served by an edge function, so after a quiet spell a
+  // cold start can take a second or more — a full-page spinner made that feel
+  // like the portal had stalled.
+  if (state.loading) {
+    return (
+      <div className="space-y-5 max-w-4xl">
+        <PageHeader title="Your Plan" subtitle="Everything about our partnership in one place." />
+        <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="Loading your plan">
+          <div className="h-28 rounded-xl bg-gray-100" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="h-36 rounded-xl bg-gray-100" />
+            <div className="h-36 rounded-xl bg-gray-100" />
+          </div>
+          <div className="h-48 rounded-xl bg-gray-100" />
+        </div>
+      </div>
+    )
+  }
   if (state.error) return <p className="text-sm text-red-600">{state.error}</p>
   const d = state.data
   if (!d.has_plan) {
