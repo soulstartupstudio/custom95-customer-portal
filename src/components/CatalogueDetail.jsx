@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { teamGridTiers } from '../lib/catalogueTiers'
 import {
   X, Package, Leaf, Search, Plus, Check, Truck, Zap, Wallet, Clock, Image as ImageIcon,
   ChevronLeft, ChevronRight, Globe, Sparkles, Box, Star, Paintbrush,
@@ -104,9 +105,9 @@ export default function CatalogueDetail({ item, company, contact, designContext 
       ])
 
       // Company-specific tiers win wholesale when present, else fall back to
-      // the global (non-sample) tiers.
+      // the global tiers on the team app's grid (see lib/catalogueTiers).
       const customTiers = ccpt?.data ?? []
-      const globalTiers = (t.data ?? []).filter((row) => !row.is_sample_tier)
+      const globalTiers = teamGridTiers(t.data)
       setTiers(customTiers.length > 0 ? customTiers : globalTiers)
       const colourList = c.data ?? []
       const customizationList = cz.data ?? []
