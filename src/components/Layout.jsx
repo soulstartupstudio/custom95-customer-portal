@@ -44,8 +44,24 @@ const tabs = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
 
+// Tabs a URL / saved value may select. 'audit' has no nav entry but is a real page.
+const KNOWN_TABS = new Set([...tabs.map((t) => t.id), 'audit'])
+const TAB_STORAGE_KEY = 'portal.activeTab'
+
+// Which tab to open on mount: ?tab= in the URL wins (deep links from emails,
+// reloads), then the tab this browser tab was last on, then Dashboard.
+function initialTab() {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('tab')
+    if (fromUrl && KNOWN_TABS.has(fromUrl)) return fromUrl
+    const saved = sessionStorage.getItem(TAB_STORAGE_KEY)
+    if (saved && KNOWN_TABS.has(saved)) return saved
+  } catch { /* storage or URL unavailable */ }
+  return 'dashboard'
+}
+
 export default function Layout({ session, contact, company }) {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
   const [wizardPrefillMulti, setWizardPrefillMulti] = useState(null) // { items, form } — e.g. warehouse restock
@@ -67,25 +83,28 @@ export default function Layout({ session, contact, company }) {
   }, [wizardOpen, company?.id, refreshKey])
 
   // Read deep-link params from URL on first load: ?tab=projects&id=<uuid>&review=<token>
+  // (the tab itself is picked up by initialTab; this only handles id / review).
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search)
       const tab = params.get('tab')
       const id = params.get('id')
       const review = params.get('review')
-      if (tab) {
-        const known = tabs.find((t) => t.id === tab)
-        if (known) setActiveTab(tab)
-      }
-      if (tab && (id || review)) setDeepLink({ tab, id, review })
-      // Clean URL so refresh doesn't re-trigger
-      if (tab || id || review) {
-        const url = new URL(window.location.href)
-        url.search = ''
-        window.history.replaceState({}, '', url.toString())
-      }
+      if (tab && KNOWN_TABS.has(tab) && (id || review)) setDeepLink({ tab, id, review })
     } catch { /* ignore */ }
   }, [])
+
+  // Keep the current tab in the URL and in sessionStorage so a reload, or the
+  // app remounting, comes back to the same page instead of the Dashboard.
+  // Only ?tab= is kept: id / review are one-shot and are dropped here.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      url.search = activeTab === 'dashboard' ? '' : `?tab=${activeTab}`
+      window.history.replaceState({}, '', url.toString())
+      sessionStorage.setItem(TAB_STORAGE_KEY, activeTab)
+    } catch { /* ignore */ }
+  }, [activeTab])
 
   // Brandshop is always visible now — non-partners see a Partnership Plan upsell
   // inside the tab (the goal is to drive them onto a plan), rather than hiding it.
