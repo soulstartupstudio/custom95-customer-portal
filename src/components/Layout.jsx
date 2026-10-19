@@ -23,6 +23,7 @@ const BrandPage = lazy(() => import('../pages/BrandPage'))
 const YourPlanPage = lazy(() => import('../pages/YourPlanPage'))
 const MerchAuditPage = lazy(() => import('../pages/MerchAuditPage'))
 const StartProposalWizard = lazy(() => import('./StartProposalWizard'))
+import { Spinner } from './ui'
 import WhatsAppButton from './WhatsAppButton'
 import ProposalDraftWidget from './ProposalDraftWidget'
 import { readProposalDraft, clearProposalDraft } from '../lib/proposalDraft'
