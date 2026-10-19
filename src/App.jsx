@@ -134,7 +134,12 @@ function PortalApp() {
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [session])
+    // Keyed on the user id, not the session object: Supabase refreshes the
+    // access token whenever the tab regains focus and emits a new session
+    // object each time. Re-running this on every refresh flipped the app back
+    // to the full-page spinner, which unmounted Layout and threw the customer
+    // back to the Dashboard tab.
+  }, [session?.user?.id])
 
   if (loading) {
     return (
