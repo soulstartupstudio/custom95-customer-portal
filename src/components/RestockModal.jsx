@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { teamGridTiersByItem } from '../lib/catalogueTiers'
 import { X, Package, Check, Search, Sparkles, ArrowRight } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents } from './ui'
 import { itemLeadDays } from '../lib/eta'
@@ -58,15 +59,12 @@ export default function RestockModal({ company, inventory, preselectedInvIds, on
       const needGlobal = [...new Set(rows
         .filter((r) => r.catalogue_item_id && !(r.company_catalogue_pricing_tiers?.length))
         .map((r) => r.catalogue_item_id))]
-      const globalByItem = {}
+      let globalByItem = {}
       if (needGlobal.length) {
         const { data: gt } = await supabase.from('catalogue_pricing_tiers')
           .select('*').in('catalogue_item_id', needGlobal).order('qty_from')
         if (cancelled) return
-        for (const t of gt ?? []) {
-          if (t.is_sample_tier) continue
-          ;(globalByItem[t.catalogue_item_id] = globalByItem[t.catalogue_item_id] || []).push(t)
-        }
+        globalByItem = teamGridTiersByItem(gt)
       }
       const byCc = {}
       for (const r of rows) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { teamGridTiers, teamGridTiersByItem } from '../lib/catalogueTiers'
 import {
   X, ChevronLeft, ChevronRight, Check, Sparkles, Calendar as CalendarIcon,
   Package, FileText, Plus, Trash2, Search, Upload, Image as ImageIcon, Star,
@@ -123,13 +124,8 @@ function CataloguePicker({ mode, company, onPick }) {
             .eq('company_id', company.id).in('catalogue_item_id', ids),
         ])
         if (!cancelled) {
-          const byItem = {}
-          // Start with global (filter out sample tiers)
-          for (const t of globalRes.data ?? []) {
-            if (t.is_sample_tier) continue
-            byItem[t.catalogue_item_id] = byItem[t.catalogue_item_id] || []
-            byItem[t.catalogue_item_id].push(t)
-          }
+          // Start with global tiers on the team app's grid (sample tier excluded)
+          const byItem = teamGridTiersByItem(globalRes.data)
           // Replace per-item if there are company tiers
           for (const row of ccRes.data ?? []) {
             const customTiers = row.company_catalogue_pricing_tiers || []
@@ -1187,7 +1183,7 @@ export default function StartProposalWizard({ company, contact, onClose, onCreat
     let tiers = mi._cc_tiers || []
     if (!tiers.length) {
       const { data } = await supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', mi.id).order('qty_from')
-      tiers = (data ?? []).filter((t) => !t.is_sample_tier)
+      tiers = teamGridTiers(data)
     }
     const locked = mi._locked_spec || null
     setItems((arr) => [...arr, {

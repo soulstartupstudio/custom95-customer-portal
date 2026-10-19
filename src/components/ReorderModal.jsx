@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { teamGridTiers } from '../lib/catalogueTiers'
 import { X, Check, RotateCw, Package, Truck } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatCents, formatCentsExact } from './ui'
 import { itemLeadDays } from '../lib/eta'
@@ -63,7 +64,7 @@ export default function ReorderModal({ item, company, contact, onClose, onStartN
     ;(async () => {
       const { data } = await supabase.from('catalogue_pricing_tiers').select('*').eq('catalogue_item_id', baseId).order('qty_from')
       if (cancelled) return
-      setTiers(sortTiers(data))
+      setTiers(teamGridTiers(data))
     })()
     return () => { cancelled = true }
   }, [baseId, isCustom, item._cc_tiers])
