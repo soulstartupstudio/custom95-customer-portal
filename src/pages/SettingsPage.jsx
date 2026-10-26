@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import BillingPanel from '../components/BillingPanel'
 import { supabase } from '../lib/supabase'
 import { Building2, MapPin, User, Mail, Phone, Hash, Calendar, Sparkles, Plus, Pencil, Trash2 } from 'lucide-react'
 import { Card, Badge, Field, Spinner, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
@@ -69,6 +70,8 @@ export default function SettingsPage({ company, contact }) {
   const [editingAddr, setEditingAddr] = useState(null) // address object, 'new', or null
   const [editingProfile, setEditingProfile] = useState(false)
   const [me, setMe] = useState(contact)
+  // Subtabs: Company & profile | Billing (direct debit, billing details, plan invoices). ?sub=billing opens Billing.
+  const [sub, setSub] = useState(() => { try { return new URLSearchParams(window.location.search).get('sub') === 'billing' ? 'billing' : 'company' } catch { return 'company' } })
 
   useEffect(() => {
     if (!company?.id) return
@@ -123,8 +126,14 @@ export default function SettingsPage({ company, contact }) {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        subtitle="Your company details and account manager."
+        subtitle={sub === 'billing' ? 'How you pay your plan and warehouse invoices.' : 'Your company details and account manager.'}
       />
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm">
+        {[['company', 'Company & profile'], ['billing', 'Billing']].map(([k, l]) => (
+          <button key={k} onClick={() => setSub(k)} className={`px-3 py-1.5 rounded-md ${sub === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>{l}</button>
+        ))}
+      </div>
+      {sub === 'billing' ? <BillingPanel /> : (
 
       <div className="space-y-6">
           {/* Your profile */}
@@ -266,6 +275,7 @@ export default function SettingsPage({ company, contact }) {
             </div>
           </Card>
       </div>
+      )}
 
       {editingProfile && (
         <ContactEditor

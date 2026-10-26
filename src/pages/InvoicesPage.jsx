@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { billingCall } from '../components/BillingPanel'
+import { hasPartnerPlan } from '../lib/planBenefits'
+import { CreditCard } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { Receipt, Download, CheckCircle2, AlertTriangle, Clock, Search } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Table, Badge, formatCents, formatDate } from '../components/ui'
@@ -56,6 +59,12 @@ function resolveReference(inv) {
 }
 
 export default function InvoicesPage({ company }) {
+  // Partners without direct debit get a one-line nudge to set it up (Settings › Billing).
+  const [ddOff, setDdOff] = useState(false)
+  useEffect(() => {
+    if (!hasPartnerPlan(company)) return
+    billingCall({ action: 'mandate' }).then((d) => setDdOff(!d?.mandate?.active)).catch(() => {})
+  }, [company?.id])
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('open')
@@ -136,6 +145,12 @@ export default function InvoicesPage({ company }) {
   return (
     <div className="space-y-6">
       <PageHeader title="Invoices" subtitle="Your invoices from Custom95 — download the PDF anytime." />
+      {ddOff && (
+        <a href="/?tab=settings&sub=billing" className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900 hover:bg-blue-50">
+          <CreditCard size={16} className="text-blue-600 flex-shrink-0" />
+          <span className="flex-1">Pay your plan and warehouse invoices automatically — <strong>set up direct debit</strong> in Settings › Billing.</span>
+        </a>
+      )}
 
       {/* Stat strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -103,7 +103,9 @@ export default function Layout({ session, contact, company }) {
   useEffect(() => {
     try {
       const url = new URL(window.location.href)
-      url.search = activeTab === 'dashboard' ? '' : `?tab=${activeTab}`
+      // Keep ?sub= on Settings (e.g. the direct-debit return link lands on Settings › Billing).
+      const sub = activeTab === 'settings' ? url.searchParams.get('sub') : null
+      url.search = activeTab === 'dashboard' ? '' : `?tab=${activeTab}${sub ? `&sub=${encodeURIComponent(sub)}` : ''}`
       window.history.replaceState({}, '', url.toString())
       sessionStorage.setItem(TAB_STORAGE_KEY, activeTab)
     } catch { /* ignore */ }
