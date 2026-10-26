@@ -118,11 +118,14 @@ function PortalApp() {
         .eq('id', row.id)
         .then(() => {})
 
-      const { data: co, error: coErr } = await supabase
-        .from('companies')
-        .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier, am_user_id, flat_delivery_fee_cents')
-        .eq('id', row.company_id)
-        .single()
+      // Warehouse-only team members can't read the company row; they get its name and plan.
+      const { data: co, error: coErr } = row.portal_role === 'warehouse'
+        ? await supabase.rpc('portal_my_company').single()
+        : await supabase
+          .from('companies')
+          .select('id, name, status, brandshop_addon, whatsapp_group_url, plan_tier, am_user_id, flat_delivery_fee_cents')
+          .eq('id', row.company_id)
+          .single()
       if (cancelled) return
       if (coErr) {
         setAccessError(`Could not load company: ${coErr.message}`)

@@ -10,6 +10,7 @@ import RequestShipmentWizard from '../components/RequestShipmentWizard'
 import RestockModal from '../components/RestockModal'
 import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
 import { hasPartnerPlan } from '../lib/planBenefits'
+import { loadAllowances, withAllowances } from '../lib/teamAccess'
 import { toCsv, downloadCsv, csvDate, csvEur, fileSlug } from '../lib/csv'
 import { LOW_STOCK_THRESHOLD } from '../lib/stock'
 
@@ -62,6 +63,9 @@ function InventoryCard({ item, incomingEta, onClick, onRestock }) {
       <div className="p-3">
         <div className="text-sm font-medium text-gray-900 truncate">{item.product_name}</div>
         {item.variant && <div className="text-xs text-gray-500 truncate">{item.variant}</div>}
+        {item.allowance_qty != null && (
+          <div className="mt-1 text-[11px] text-blue-700">Your allowance: {item.allowance_left} of {item.allowance_qty} left</div>
+        )}
         <div className="mt-2 flex items-center justify-between">
           <div>
             <div className="text-xs text-gray-400">Available</div>
@@ -414,7 +418,9 @@ function FiltersBar({ products, productId, onProductChange, dateFrom, dateTo, on
 }
 
 // --- Main page ---
-export default function WarehousePage({ company, contact, onStartProposalWithItems }) {
+// warehouseOnly: a team member with warehouse-only access — their shared items with what's left
+// of their allowance; no restock / proposals (Team access).
+export default function WarehousePage({ company, contact, onStartProposalWithItems, warehouseOnly = false }) {
   const [tab, setTab] = useState('inventory')
   const [inventory, setInventory] = useState([])
   const [orders, setOrders] = useState([])
@@ -450,7 +456,12 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
       ])
       if (cancelled) return
 
-      setInventory(inv.data ?? [])
+      let invRows = inv.data ?? []
+      if (warehouseOnly && contact?.id) {
+        try { invRows = withAllowances(invRows, await loadAllowances(contact.id)) } catch { /* stock as is */ }
+        if (cancelled) return
+      }
+      setInventory(invRows)
       setOrders(ord.data ?? [])
       setRequests(req.data ?? [])
 
@@ -660,7 +671,7 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
         }
       />
 
-      {!hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" feature="Warehousing" icon={Warehouse} />}
+      {!warehouseOnly && !hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" feature="Warehousing" icon={Warehouse} />}
 
       {(runningLow.length > 0 || outOfStock.length > 0) && (
         <div className="space-y-2">

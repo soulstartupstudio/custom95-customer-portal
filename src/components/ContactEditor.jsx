@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Check, Upload, User } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
+import { hasTeamAccess } from '../lib/teamAccess'
 
 const EMPTY = {
   first_name: '', last_name: '', role: '',
@@ -20,6 +21,10 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
   const [error, setError] = useState(null)
   const fileRef = useRef(null)
   const isEdit = !!contact?.id
+  // Team access: a new teammate can start as warehouse-only (Growth / Scale / Enterprise), so the
+  // invite they get right away never opens the full portal. Existing members: Team tab › Access.
+  const canChooseAccess = !isEdit && hasTeamAccess(company)
+  const [access, setAccess] = useState('admin')
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -57,6 +62,7 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
     // New teammates added from the portal get portal access automatically.
     // Their portal_auth_id binds on first sign-in via App.jsx's auto-claim flow.
     if (!isEdit) payload.portal_active = true
+    if (!isEdit && canChooseAccess && access === 'warehouse') payload.portal_role = 'warehouse'
     const res = isEdit
       ? await supabase.from('contacts').update(payload).eq('id', contact.id).select().single()
       : await supabase.from('contacts').insert(payload).select().single()
@@ -65,7 +71,8 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
     // On add: fire the portal-invite edge function so they get a welcome email
     // with a sign-in link. We don't block the save if the email fails — just
     // surface a soft warning.
-    if (!isEdit && res.data?.id && payload.email) {
+    // Warehouse-only: no invite yet — first share the items, then press Invite on their card.
+    if (!isEdit && res.data?.id && payload.email && payload.portal_role !== 'warehouse') {
       const { error: inviteErr } = await supabase.functions.invoke('portal-invite', {
         body: { contact_id: res.data.id },
       })
@@ -114,6 +121,21 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
           </div>
           <input type="text" value={form.role || ''} onChange={(e) => update('role', e.target.value)} placeholder="Role (e.g. Marketing Lead)" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <input type="email" value={form.email || ''} onChange={(e) => update('email', e.target.value)} placeholder="Email" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          {canChooseAccess && (
+            <div className="rounded-lg border border-gray-200 p-2.5">
+              <p className="text-xs font-medium text-gray-700 mb-1.5">Portal access</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[['admin', 'Full access', 'Everything in the portal'], ['warehouse', 'Warehouse only', 'Only the stock you share, nothing else']].map(([k, label, hint]) => (
+                  <button key={k} type="button" onClick={() => setAccess(k)}
+                    className={`text-left rounded-lg border px-2.5 py-2 ${access === k ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <span className="block text-sm font-medium text-gray-900">{label}</span>
+                    <span className="block text-[11px] text-gray-500">{hint}</span>
+                  </button>
+                ))}
+              </div>
+              {access === 'warehouse' && <p className="text-[11px] text-gray-500 mt-1.5">After saving: share the items they may order (and how many) under Access on their card, then press Invite.</p>}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input type="tel" value={form.phone || ''} onChange={(e) => update('phone', e.target.value)} placeholder="Phone" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <input type="tel" value={form.whatsapp_phone || ''} onChange={(e) => update('whatsapp_phone', e.target.value)} placeholder="WhatsApp" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />

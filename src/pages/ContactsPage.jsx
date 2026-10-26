@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send, Wallet, Sparkles, Lock, Check, Loader2 } from 'lucide-react'
+import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send, Wallet, Sparkles, Lock, Check, Loader2, Warehouse, KeyRound } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../components/ui'
 import ContactEditor from '../components/ContactEditor'
+import TeamAccessModal from '../components/TeamAccessModal'
+import { hasTeamAccess } from '../lib/teamAccess'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
 
 // "Coming soon for partner plans" teaser: track costs & set budgets per department.
@@ -57,8 +59,47 @@ function CostsBudgetsTeaser({ company }) {
     </Card>
   )
 }
+// Team access: give colleagues warehouse-only access (Growth / Scale / Enterprise).
+function TeamAccessIntro({ company }) {
+  const on = hasTeamAccess(company)
+  const [state, setState] = useState(null)
+  const notify = async () => {
+    setState('sending')
+    try { await requestPlanInterest({ feature: 'Team access (warehouse-only team members)' }); setState('sent') }
+    catch { setState('error') }
+  }
+  return (
+    <Card>
+      <div className="flex items-start gap-4">
+        <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><KeyRound size={20} /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-gray-900">Team access</h3>
+            {!on && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold"><Sparkles size={9} />Growth &amp; Scale plans</span>}
+          </div>
+          <p className="text-sm text-gray-600 mt-1">
+            Give colleagues <strong>warehouse-only</strong> access: they see just the stock you share with them, request shipments and returns,
+            and can order up to the allowance you set per item. No invoices, designs or settings. You keep full access and get an email for every request.
+          </p>
+          {on ? (
+            <p className="text-xs text-gray-500 mt-2">Add a team member and choose <em>Warehouse only</em>, or press <strong>Access</strong> on a teammate’s card.</p>
+          ) : (
+            <div className="mt-3">
+              {state === 'sent'
+                ? <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-700"><Check size={15} />Request sent to your account manager</span>
+                : <button onClick={notify} disabled={state === 'sending'} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+                    {state === 'sending' ? <Loader2 size={15} className="animate-spin" /> : <Lock size={14} />}I’m interested
+                  </button>}
+              {state === 'error' && <p className="text-xs text-red-600 mt-2">Couldn’t send that just now — please try again.</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
 
-function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending }) {
+function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending, onAccess, sharedItems = 0 }) {
   const initials = [contact.first_name, contact.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase()
   return (
     <Card>
@@ -75,7 +116,9 @@ function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, r
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <h3 className="text-sm font-semibold text-gray-900 truncate">{contact.first_name} {contact.last_name}</h3>
               {isMe && <Badge tone="blue">You</Badge>}
-              {contact.portal_active && <Badge tone="green"><Shield size={10} className="mr-1" />Portal access</Badge>}
+              {contact.portal_role === 'warehouse'
+                ? <Badge tone="yellow"><Warehouse size={10} className="mr-1" />Warehouse only · {sharedItems} item{sharedItems === 1 ? '' : 's'}</Badge>
+                : contact.portal_active && <Badge tone="green"><Shield size={10} className="mr-1" />Portal access</Badge>}
             </div>
             <div className="flex items-center gap-3">
               {!isMe && contact.email && (
@@ -86,6 +129,11 @@ function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, r
                   title={contact.portal_active ? 'Resend sign-in link' : 'Send portal invite'}
                 >
                   <Send size={12} />{resending ? '…' : contact.portal_active ? 'Resend' : 'Invite'}
+                </button>
+              )}
+              {onAccess && !isMe && (
+                <button onClick={onAccess} className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs" title="Full access or warehouse-only, and which items">
+                  <KeyRound size={12} />Access
                 </button>
               )}
               <button
@@ -159,6 +207,9 @@ export default function ContactsPage({ company, contact }) {
   const [proposalContacts, setProposalContacts] = useState([])
   const [requestedItems, setRequestedItems] = useState([])
   const [resendingId, setResendingId] = useState(null)
+  const [accessFor, setAccessFor] = useState(null)   // team member whose access is being edited
+  const [sharedByContact, setSharedByContact] = useState({})
+  const teamAccess = hasTeamAccess(company)
 
   useEffect(() => {
     if (!company?.id) return
@@ -175,6 +226,9 @@ export default function ContactsPage({ company, contact }) {
         supabase.from('proposal_requested_items').select('requested_by_contact_id').eq('company_id', company.id),
       ])
       if (cancelled) return
+      const { data: access } = await supabase.from('portal_item_access').select('contact_id')
+      if (cancelled) return
+      setSharedByContact((access ?? []).reduce((m, a) => ({ ...m, [a.contact_id]: (m[a.contact_id] || 0) + 1 }), {}))
       setRows(contactsRes.data ?? [])
       setProposalContacts(pcRes.data ?? [])
       setRequestedItems(riRes.data ?? [])
@@ -236,6 +290,8 @@ export default function ContactsPage({ company, contact }) {
               isMe={c.id === contact?.id}
               stats={statsByContact[c.id]}
               onEdit={() => setEditing(c)}
+              onAccess={teamAccess || c.portal_role === 'warehouse' ? () => setAccessFor(c) : null}
+              sharedItems={sharedByContact[c.id] || 0}
               resending={resendingId === c.id}
               onResendInvite={async () => {
                 if (!c.email) return
@@ -268,7 +324,17 @@ export default function ContactsPage({ company, contact }) {
         </div>
       )}
 
+      <TeamAccessIntro company={company} />
       <CostsBudgetsTeaser company={company} />
+
+      {accessFor && (
+        <TeamAccessModal
+          company={company}
+          member={accessFor}
+          onClose={() => setAccessFor(null)}
+          onSaved={() => { setAccessFor(null); setRefresh((r) => r + 1) }}
+        />
+      )}
 
       {editing && (
         <ContactEditor
