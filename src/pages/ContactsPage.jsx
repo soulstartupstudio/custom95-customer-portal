@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send, Wallet, Sparkles, Lock, Check, Loader2, Warehouse, KeyRound } from 'lucide-react'
+import { Users, Mail, Phone, MessageCircle, Shield, Plus, Pencil, FileText, Package, Trash2, Send, Wallet, Sparkles, Lock, Check, Loader2, Warehouse, KeyRound, ClipboardList } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../components/ui'
 import ContactEditor from '../components/ContactEditor'
 import TeamAccessModal from '../components/TeamAccessModal'
+import MemberOrdersModal from '../components/MemberOrdersModal'
 import { hasTeamAccess } from '../lib/teamAccess'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
 
@@ -103,7 +104,7 @@ function TeamAccessIntro({ company }) {
   )
 }
 
-function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending, onAccess, sharedItems = 0 }) {
+function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, resending, onAccess, onOrders, sharedItems = 0 }) {
   const initials = [contact.first_name, contact.last_name].filter(Boolean).map((n) => n[0]).join('').toUpperCase()
   return (
     <Card>
@@ -133,6 +134,11 @@ function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, r
                   title={contact.portal_active ? 'Resend sign-in link' : 'Send portal invite'}
                 >
                   <Send size={12} />{resending ? '…' : contact.portal_active ? 'Resend' : 'Invite'}
+                </button>
+              )}
+              {onOrders && (
+                <button onClick={onOrders} className="text-gray-400 hover:text-blue-600 inline-flex items-center gap-1 text-xs" title="What they ordered from the warehouse: per request and per product">
+                  <ClipboardList size={12} />Orders
                 </button>
               )}
               {onAccess && !isMe && (
@@ -217,6 +223,7 @@ export default function ContactsPage({ company, contact }) {
   const [requestedItems, setRequestedItems] = useState([])
   const [resendingId, setResendingId] = useState(null)
   const [accessFor, setAccessFor] = useState(null)   // team member whose access is being edited
+  const [ordersFor, setOrdersFor] = useState(null)   // team member whose warehouse orders are shown
   const [sharedByContact, setSharedByContact] = useState({})
   const teamAccess = hasTeamAccess(company)
 
@@ -300,6 +307,7 @@ export default function ContactsPage({ company, contact }) {
               stats={statsByContact[c.id]}
               onEdit={() => setEditing(c)}
               onAccess={teamAccess || c.portal_role === 'warehouse' ? () => setAccessFor(c) : null}
+              onOrders={c.portal_active ? () => setOrdersFor(c) : null}
               sharedItems={sharedByContact[c.id] || 0}
               resending={resendingId === c.id}
               onResendInvite={async () => {
@@ -336,6 +344,9 @@ export default function ContactsPage({ company, contact }) {
       <TeamAccessIntro company={company} />
       <CostsBudgetsTeaser company={company} />
 
+      {ordersFor && (
+        <MemberOrdersModal company={company} member={ordersFor} team={rows} onClose={() => setOrdersFor(null)} />
+      )}
       {accessFor && (
         <TeamAccessModal
           company={company}
