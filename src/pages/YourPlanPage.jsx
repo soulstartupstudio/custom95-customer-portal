@@ -6,7 +6,9 @@ import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
 import { fetchPortalPlan } from '../lib/portalPlan'
 import { planLabel } from '../lib/planBenefits'
 
+// The plan fee is always per month; billing_frequency is how often it is invoiced (Dex, 26 Oct 2026).
 const per = (f) => ({ monthly: 'month', quarterly: 'quarter', yearly: 'year' }[f] || 'month')
+const periodMonths = (f) => ({ monthly: 1, quarterly: 3, yearly: 12 }[f] || 1)
 
 // "Your Plan": what the customer is on, the terms they accepted, the full agreement, their
 // Account Manager, onboarding progress and the Merch Questionnaire.
@@ -65,7 +67,12 @@ export default function YourPlanPage({ company, navigate }) {
             <div className="flex items-center gap-2"><h2 className="text-xl font-semibold">{name}</h2><Badge tone="green">Active</Badge></div>
             <p className="text-gray-400 text-sm mt-0.5">{company?.name}</p>
           </div>
-          {p.fee_cents ? <p className="text-2xl font-semibold">{formatCents(p.fee_cents)}<span className="text-sm font-normal text-gray-400"> / {per(p.billing_frequency)}</span></p> : null}
+          {p.fee_cents ? (
+            <div>
+              <p className="text-2xl font-semibold">{formatCents(p.fee_cents)}<span className="text-sm font-normal text-gray-400"> / month</span></p>
+              {periodMonths(p.billing_frequency) > 1 && <p className="text-xs text-gray-400">Invoiced {per(p.billing_frequency)}ly · {formatCents(p.fee_cents * periodMonths(p.billing_frequency))} per invoice</p>}
+            </div>
+          ) : null}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-4 border-t border-white/10 text-sm">
           <div><p className="text-gray-400 text-xs">Started</p><p className="font-medium">{formatDate(p.start_date)}</p></div>

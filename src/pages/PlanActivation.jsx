@@ -13,6 +13,9 @@ const LOGO = 'https://qhgdmdtqssjylfwetpna.supabase.co/storage/v1/object/public/
 const eur = (c) => new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: (c ?? 0) % 100 ? 2 : 0 }).format((c ?? 0) / 100)
 const fmtDate = (d) => (d ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(d)) : '—')
 const per = (f) => ({ monthly: 'month', quarterly: 'quarter', yearly: 'year' }[f] || f)
+// The plan fee is always per month; billing_frequency is how often it is invoiced (Dex, 26 Oct 2026).
+const periodMonths = (f) => ({ monthly: 1, quarterly: 3, yearly: 12 }[f] || 1)
+const invoicedNote = (p) => (periodMonths(p.billing_frequency) > 1 ? `invoiced ${per(p.billing_frequency)}ly (${eur(p.fee_cents * periodMonths(p.billing_frequency))} per invoice)` : 'invoiced monthly')
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function Field({ label, required, children, hint }) {
@@ -173,7 +176,7 @@ export default function PlanActivation({ token, preview = false }) {
   const notice = p.notice_period_months ?? 1
   const keyRows = [
     [Clock, 'Support', `${p.response_time || 'Within 4 business hours'} · Monday–Friday, 09:00–17:30 CET`],
-    [CreditCard, 'Payment', `${eur(p.fee_cents)} / ${per(p.billing_frequency)}, invoiced in advance · invoices payable within ${p.payment_terms_days ?? 14} days`],
+    [CreditCard, 'Payment', `${eur(p.fee_cents)} / month, ${invoicedNote(p)} in advance · invoices payable within ${p.payment_terms_days ?? 14} days`],
     [CalendarDays, 'Contract term', `${months(p.minimum_term_months ?? 12)}${p.trial_months ? ` — the first ${months(p.trial_months)} are a trial (${months(notice)} notice)` : ''}`],
     [Handshake, 'Renewal', p.renewal_months ? `Renews for ${months(p.renewal_months)} unless cancelled ${months(notice)} before the end` : 'No automatic renewal'],
     ...(p.brandshop_addon ? [[Sparkles, 'Brandshop', `Add-on included — ${p.brandshop_line}`]] : []),
@@ -201,7 +204,8 @@ export default function PlanActivation({ token, preview = false }) {
               <h2 className="text-2xl font-semibold">{p.name || 'Custom95 Plan'}</h2>
               <p className="text-gray-400 text-sm mt-0.5">for {d.company?.name}</p>
             </div>
-            <p className="text-3xl font-semibold">{eur(p.fee_cents)}<span className="text-base font-normal text-gray-400"> / {per(p.billing_frequency)}</span></p>
+            <p className="text-3xl font-semibold">{eur(p.fee_cents)}<span className="text-base font-normal text-gray-400"> / month</span></p>
+            {periodMonths(p.billing_frequency) > 1 && <p className="text-xs text-gray-400 mt-0.5">{invoicedNote(p)}</p>}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/10 text-sm">
             <div><p className="text-gray-400 text-xs">Starting</p><p className="font-medium">{fmtDate(p.start_date)}</p></div>
@@ -292,7 +296,7 @@ export default function PlanActivation({ token, preview = false }) {
         {/* Billing */}
         <Section eyebrow="Billing" title="Billing">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-5">
-            <div><p className="text-gray-400 text-xs">Plan</p><p className="font-medium text-gray-900">{eur(p.fee_cents)} / {per(p.billing_frequency)}</p></div>
+            <div><p className="text-gray-400 text-xs">Plan</p><p className="font-medium text-gray-900">{eur(p.fee_cents)} / month</p></div>
             <div><p className="text-gray-400 text-xs">Billing frequency</p><p className="font-medium text-gray-900 capitalize">{p.billing_frequency}</p></div>
             <div><p className="text-gray-400 text-xs">First billing date</p><p className="font-medium text-gray-900">{fmtDate(p.start_date)}</p></div>
             <div><p className="text-gray-400 text-xs">Payment method</p><p className="font-medium text-gray-900">By invoice</p></div>
