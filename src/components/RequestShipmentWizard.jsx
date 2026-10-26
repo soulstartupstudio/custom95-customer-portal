@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton, formatDate } from './ui'
 import AddressEditor from './AddressEditor'
+import { isWarehouseOnly, loadAllowances, withAllowances } from '../lib/teamAccess'
 import { calcShipment, normalizeCountry, guessProductDims, VAT_RATE, loadShippingConfig, formatEtaDate, etaDateFromDays } from '../lib/shippingCalc'
 
 const STEPS = [
@@ -46,7 +47,7 @@ const addressTitle = (a) => a.label || `${a.street} ${a.house_number || ''}`
 const addressLine = (a) => [[a.street, a.house_number].filter(Boolean).join(' '), [a.postal_code, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ')
 
 // --- Item picker ---
-function ItemPicker({ company, onAdd, selectedByInventoryId }) {
+function ItemPicker({ company, contact, onAdd, selectedByInventoryId }) {
   const [items, setItems] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -55,20 +56,28 @@ function ItemPicker({ company, onAdd, selectedByInventoryId }) {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const { data } = await supabase
+      // Warehouse-only team members see exactly the items shared with them, capped by
+      // what is left of their allowance (the database enforces both).
+      const teamMember = isWarehouseOnly(contact)
+      let q = supabase
         .from('warehouse_inventory_client')
         .select('id, product_name, sku, variant, product_photo_url, available_qty, on_hand_qty, warehouse_location, unit_weight_grams, unit_volume_ml')
         .eq('company_id', company.id)
-        .eq('portal_orderable', true)
         .gt('available_qty', 0)
         .order('product_name')
+      if (!teamMember) q = q.eq('portal_orderable', true)
+      const { data } = await q
+      let rows = data ?? []
+      if (teamMember) {
+        try { rows = withAllowances(rows, await loadAllowances(contact.id)).filter((i) => (i.available_qty ?? 0) > 0) } catch { /* show stock as is */ }
+      }
       if (!cancelled) {
-        setItems(data ?? [])
+        setItems(rows)
         setLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [company.id])
+  }, [company.id, contact?.id])
 
   const filtered = search
     ? items.filter((i) => i.product_name?.toLowerCase().includes(search.toLowerCase()) || i.sku?.toLowerCase().includes(search.toLowerCase()))
@@ -655,7 +664,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {step === 0 && (
             <div className="space-y-4">
-              <ItemPicker company={company} onAdd={addItem} selectedByInventoryId={selectedByInventoryId} />
+              <ItemPicker company={company} contact={contact} onAdd={addItem} selectedByInventoryId={selectedByInventoryId} />
               <div>
                 <div className="text-xs font-semibold text-gray-700 mb-2">
                   In your cart {items.length > 0 && `· ${items.length}`}

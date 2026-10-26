@@ -61,7 +61,10 @@ function initialTab() {
 }
 
 export default function Layout({ session, contact, company }) {
-  const [activeTab, setActiveTab] = useState(initialTab)
+  // Team access: a warehouse-only team member gets the Warehouse tab and nothing else (the
+  // database enforces the same — see portal_team_access in the team-app migrations).
+  const warehouseOnly = contact?.portal_role === 'warehouse'
+  const [activeTab, setActiveTab] = useState(() => (warehouseOnly ? 'warehouse' : initialTab()))
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardPrefill, setWizardPrefill] = useState(null) // optional pre-loaded item
   const [wizardPrefillMulti, setWizardPrefillMulti] = useState(null) // { items, form } — e.g. warehouse restock
@@ -108,7 +111,7 @@ export default function Layout({ session, contact, company }) {
 
   // Brandshop is always visible now — non-partners see a Partnership Plan upsell
   // inside the tab (the goal is to drive them onto a plan), rather than hiding it.
-  const visibleTabs = tabs
+  const visibleTabs = warehouseOnly ? tabs.filter((t) => t.id === 'warehouse') : tabs
 
   const openWizard = () => { setWizardPrefill(null); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
   const openWizardWithItem = (prefilled) => { setWizardPrefill(prefilled); setWizardPrefillMulti(null); setWizardResume(null); setWizardOpen(true) }
@@ -124,6 +127,7 @@ export default function Layout({ session, contact, company }) {
   const linkId = (tab) => (deepLink?.tab === tab ? deepLink.id : null)
 
   const renderContent = () => {
+    if (warehouseOnly) return <WarehousePage company={company} contact={contact} warehouseOnly />
     switch (activeTab) {
       case 'dashboard': return <DashboardPage key={refreshKey} session={session} contact={contact} company={company} navigate={setActiveTab} />
       case 'proposals': return <ProposalsPage key={refreshKey} company={company} contact={contact} onStartProposal={openWizard} onOpenProject={(id) => navigateTo('projects', id)} />
@@ -165,12 +169,12 @@ export default function Layout({ session, contact, company }) {
           <div className="text-sm font-bold text-white leading-tight">{activeLabel || 'Custom95'}</div>
           <div className="text-[11px] text-white/50 truncate leading-tight">{company?.name || 'Customer Portal'}</div>
         </div>
-        <button
+        {!warehouseOnly && <button
           onClick={openWizard}
           className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 active:scale-[0.97] transition-transform duration-150"
         >
           <Plus size={13} />New
-        </button>
+        </button>}
       </header>
 
       {/* MOBILE NAV OVERLAY */}
@@ -199,14 +203,14 @@ export default function Layout({ session, contact, company }) {
           </button>
         </div>
 
-        <div className="px-3 pt-3">
+        {!warehouseOnly && <div className="px-3 pt-3">
           <button
             onClick={() => { setMobileNavOpen(false); openWizard() }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 active:scale-[0.97] transition-[background-color,transform] duration-150"
           >
             <Plus size={16} />Start proposal
           </button>
-        </div>
+        </div>}
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {visibleTabs.map(({ id, label, icon: Icon }) => (
@@ -253,10 +257,10 @@ export default function Layout({ session, contact, company }) {
         </div>
       </main>
 
-      <WhatsAppButton url={company?.whatsapp_group_url} />
+      {!warehouseOnly && <WhatsAppButton url={company?.whatsapp_group_url} />}
 
       {/* In-progress proposal pill (hidden while the wizard itself is open) */}
-      {!wizardOpen && draft && (
+      {!warehouseOnly && !wizardOpen && draft && (
         <ProposalDraftWidget
           draft={draft}
           company={company}
