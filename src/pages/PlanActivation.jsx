@@ -151,6 +151,7 @@ export default function PlanActivation({ token, preview = false }) {
             <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-4"><Check className="text-emerald-600" /></div>
             <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 tracking-tight">Welcome to Custom95 🎉</h1>
             <p className="text-gray-600 mt-2">Your Plan is active. We'll now start setting up your partnership.</p>
+            {!preview && <DirectDebitOffer token={token} />}
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400 mt-8 mb-3">What happens next</p>
             <ol className="space-y-4">
               {steps.map(([t, s], i) => (
@@ -176,7 +177,7 @@ export default function PlanActivation({ token, preview = false }) {
   const notice = p.notice_period_months ?? 1
   const keyRows = [
     [Clock, 'Support', `${p.response_time || 'Within 4 business hours'} · Monday–Friday, 09:00–17:30 CET`],
-    [CreditCard, 'Payment', `${eur(p.fee_cents)} / month, ${invoicedNote(p)} in advance · invoices payable within ${p.payment_terms_days ?? 14} days`],
+    [CreditCard, 'Payment', `${eur(p.fee_cents)} / month, ${invoicedNote(p)} in advance · invoices payable within ${p.payment_terms_days ?? 14} days, or by direct debit if you choose`],
     [CalendarDays, 'Contract term', `${months(p.minimum_term_months ?? 12)}${p.trial_months ? ` — the first ${months(p.trial_months)} are a trial (${months(notice)} notice)` : ''}`],
     [Handshake, 'Renewal', p.renewal_months ? `Renews for ${months(p.renewal_months)} unless cancelled ${months(notice)} before the end` : 'No automatic renewal'],
     ...(p.brandshop_addon ? [[Sparkles, 'Brandshop', `Add-on included — ${p.brandshop_line}`]] : []),
@@ -368,6 +369,43 @@ export default function PlanActivation({ token, preview = false }) {
           </aside>
         </div>
       )}
+    </div>
+  )
+}
+
+// Optional, right after activating: pay plan + warehouse invoices by direct debit. The activation
+// link asks the server for this account's bank set-up page; afterwards the customer lands on the
+// portal's Billing tab. "Later" is always fine — it's also under Settings › Billing.
+function DirectDebitOffer({ token }) {
+  const [state, setState] = useState(null) // null | 'busy' | 'later'
+  const go = async () => {
+    setState('busy')
+    try {
+      const res = await fetch(FN, { method: 'POST', headers: HEADERS, body: JSON.stringify({ action: 'mandate_url', token }) })
+      const r = await res.json().catch(() => ({}))
+      if (r.ok && r.url) { window.location.href = r.url; return }
+    } catch { /* fall through */ }
+    setState('later')
+  }
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-[#F9F3EE]/60 p-4">
+      <div className="flex items-start gap-3">
+        <CreditCard className="text-gray-700 shrink-0 mt-0.5" size={18} />
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900">Pay plan and warehouse invoices automatically <span className="text-xs font-normal text-gray-500">(optional)</span></p>
+          <p className="text-sm text-gray-600 mt-0.5">Set up direct debit once — takes a minute with your bank. You still receive every invoice; it's collected on the due date. Project invoices are not included.</p>
+          {state === 'later' ? (
+            <p className="text-sm text-gray-600 mt-3">That didn't work just now — you can set it up any time in your portal under <strong>Settings › Billing</strong>.</p>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button onClick={go} disabled={state === 'busy'} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-black text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60">
+                <CreditCard size={15} />{state === 'busy' ? 'Opening…' : 'Set up direct debit'}
+              </button>
+              <span className="text-xs text-gray-500">or later in your portal (Settings › Billing)</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

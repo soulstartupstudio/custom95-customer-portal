@@ -4,6 +4,7 @@ import { Check, ArrowRight } from 'lucide-react'
 // internal checklist has more). Each open step says what to do next or who's on it.
 const NEXT = {
   company: { text: 'Check your company details', tab: 'settings' },
+  direct_debit: { text: 'Pay plan and warehouse invoices automatically by direct debit — set it up once, or skip', short: 'Set up automatic payment', href: '/?tab=settings&sub=billing' },
   team: { text: 'Invite everyone with a say on merch — HR, events, office manager, interns, creatives, founders — to your Digital Merch Home', short: 'Invite your team', tab: 'contacts' },
   brand_assets: { text: 'Upload your logos & brand files', tab: 'brand' },
   questionnaire: { text: 'Tell us about your brand, team and moments', short: 'Fill in the Merch Questionnaire', tab: 'audit' },
@@ -11,7 +12,10 @@ const NEXT = {
   merch_plan: { text: 'Your Merch Calendar, Core Collection and 90-day or year plan' },
 }
 
-export default function GettingStarted({ onboarding, navigate }) {
+export default function GettingStarted({ onboarding, navigate: nav }) {
+  // A step can point to a sub-page (href) instead of a tab.
+  const go = (h) => (h.href ? (window.location.href = h.href) : nav(h.tab))
+  const navigate = (tab) => go(Object.values(NEXT).find((h) => h.tab === tab) || { tab })
   if (!onboarding || onboarding.completed) return null
   const steps = onboarding.steps || []
   const done = steps.filter(s => s.done).length
@@ -23,8 +27,8 @@ export default function GettingStarted({ onboarding, navigate }) {
           <h3 className="text-sm font-semibold text-gray-900">Getting started</h3>
           <p className="text-xs text-gray-500 mt-0.5">{done} of {steps.length} completed</p>
         </div>
-        {nextOpen && NEXT[nextOpen.key]?.tab && (
-          <button onClick={() => navigate(NEXT[nextOpen.key].tab)}
+        {nextOpen && (NEXT[nextOpen.key]?.tab || NEXT[nextOpen.key]?.href) && (
+          <button onClick={() => go(NEXT[nextOpen.key])}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700">
             {NEXT[nextOpen.key].short || NEXT[nextOpen.key].text} <ArrowRight size={14} />
           </button>
@@ -43,11 +47,11 @@ export default function GettingStarted({ onboarding, navigate }) {
               </span>
               <div className="min-w-0">
                 {/* An open step the customer can act on is a link to where they do it. */}
-                {hint?.tab
-                  ? <button onClick={() => navigate(hint.tab)} className="text-sm text-gray-900 font-medium hover:text-blue-700 hover:underline text-left">{s.label}</button>
+                {(hint?.tab || hint?.href)
+                  ? <button onClick={() => go(hint)} className="text-sm text-gray-900 font-medium hover:text-blue-700 hover:underline text-left">{s.label}</button>
                   : <p className={`text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-900 font-medium'}`}>{s.label}</p>}
-                {hint && (hint.tab
-                  ? <button onClick={() => navigate(hint.tab)} className="text-xs text-blue-600 hover:underline">{hint.text}</button>
+                {hint && ((hint.tab || hint.href)
+                  ? <button onClick={() => go(hint)} className="text-xs text-blue-600 hover:underline">{hint.text}</button>
                   : <p className="text-xs text-gray-500">{hint.text}</p>)}
               </div>
             </li>
