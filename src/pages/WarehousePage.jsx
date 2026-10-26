@@ -538,10 +538,13 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
 
   if (loading) return <Spinner />
 
+  // Warehouse-only members: the stock grid shows what is shared with them; items that only appear
+  // in a department colleague's order stay in `inventory` for names (Team access › departments).
+  const stockItems = warehouseOnly ? inventory.filter((i) => i.shared) : inventory
   // Stock buckets for the inventory overview (out of stock / running low / in stock)
-  const outOfStock = inventory.filter((i) => (i.available_qty ?? 0) === 0)
-  const runningLow = inventory.filter((i) => (i.available_qty ?? 0) > 0 && (i.available_qty ?? 0) < LOW_STOCK_THRESHOLD)
-  const inStock = inventory.filter((i) => (i.available_qty ?? 0) >= LOW_STOCK_THRESHOLD)
+  const outOfStock = stockItems.filter((i) => (i.available_qty ?? 0) === 0)
+  const runningLow = stockItems.filter((i) => (i.available_qty ?? 0) > 0 && (i.available_qty ?? 0) < LOW_STOCK_THRESHOLD)
+  const inStock = stockItems.filter((i) => (i.available_qty ?? 0) >= LOW_STOCK_THRESHOLD)
   const invById = Object.fromEntries(inventory.map((i) => [i.id, i]))
   const canRestock = !!onStartProposalWithItems
   const openRestock = (invItems) => setRestockFor(invItems.map((i) => i.id))
@@ -724,7 +727,7 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
 
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {[
-          { id: 'inventory', label: `Inventory (${inventory.length})` },
+          { id: 'inventory', label: `Inventory (${stockItems.length})` },
           { id: 'requests', label: `My requests${pendingRequests > 0 ? ` · ${pendingRequests}` : ''} (${requests.length})` },
           { id: 'orders', label: `Shipments (${orders.length})` },
           { id: 'spend', label: 'Shipping costs' },
@@ -743,13 +746,13 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
       </div>
 
       {tab === 'inventory' && (
-        inventory.length === 0 ? (
+        stockItems.length === 0 ? (
           <EmptyState icon={Package} title="No inventory" description="Stock will appear here once items are received." />
         ) : (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Current stock — {inventory.length} item{inventory.length === 1 ? '' : 's'}</span>
-              <ExportCsvButton filename={`${slug}-inventory-${today}.csv`} columns={inventoryCsvColumns} rows={inventory} />
+              <span className="text-xs text-gray-500">Current stock — {stockItems.length} item{stockItems.length === 1 ? '' : 's'}</span>
+              <ExportCsvButton filename={`${slug}-inventory-${today}.csv`} columns={inventoryCsvColumns} rows={stockItems} />
             </div>
             {[
               { id: 'out', label: 'Out of stock', icon: XCircle, iconClass: 'text-red-500', items: outOfStock },

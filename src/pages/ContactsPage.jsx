@@ -82,7 +82,11 @@ function TeamAccessIntro({ company }) {
             and can order up to the allowance you set per item. No invoices, designs or settings. You keep full access and get an email for every request.
           </p>
           {on ? (
-            <p className="text-xs text-gray-500 mt-2">Add a team member and choose <em>Warehouse only</em>, or press <strong>Access</strong> on a teammate’s card.</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Add a team member and choose <em>Warehouse only</em>, or press <strong>Access</strong> on a teammate’s card.
+              Give people a <strong>department</strong>: warehouse-only colleagues in the same department see each other’s orders,
+              and you can copy one colleague’s items to the next.
+            </p>
           ) : (
             <div className="mt-3">
               {state === 'sent'
@@ -154,7 +158,12 @@ function ContactCard({ contact, isMe, stats, onEdit, onRemove, onResendInvite, r
               )}
             </div>
           </div>
-          {contact.role && <div className="text-xs text-gray-500 mt-0.5">{contact.role}</div>}
+          {(contact.role || contact.department) && (
+            <div className="text-xs text-gray-500 mt-0.5">
+              {contact.role}{contact.role && contact.department ? ' · ' : ''}
+              {contact.department && <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">{contact.department}</span>}
+            </div>
+          )}
           <div className="mt-3 space-y-1.5">
             {contact.email && (
               <a href={`mailto:${contact.email}`} className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600">
@@ -219,7 +228,7 @@ export default function ContactsPage({ company, contact }) {
       const [contactsRes, pcRes, riRes] = await Promise.all([
         supabase
           .from('contacts')
-          .select('id, first_name, last_name, role, email, phone, whatsapp_phone, profile_image_url, portal_active, portal_role')
+          .select('id, first_name, last_name, role, department, email, phone, whatsapp_phone, profile_image_url, portal_active, portal_role')
           .eq('company_id', company.id)
           .order('last_name', { nullsFirst: false }),
         supabase.from('proposal_contacts').select('proposal_id, contact_id, role').eq('company_id', company.id),
@@ -331,6 +340,7 @@ export default function ContactsPage({ company, contact }) {
         <TeamAccessModal
           company={company}
           member={accessFor}
+          team={rows}
           onClose={() => setAccessFor(null)}
           onSaved={() => { setAccessFor(null); setRefresh((r) => r + 1) }}
         />
@@ -340,6 +350,7 @@ export default function ContactsPage({ company, contact }) {
         <ContactEditor
           company={company}
           contact={editing === 'new' ? null : editing}
+          team={rows}
           onCancel={() => setEditing(null)}
           onSaved={() => { setEditing(null); setRefresh((r) => r + 1) }}
         />

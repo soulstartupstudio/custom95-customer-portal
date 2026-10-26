@@ -25,6 +25,7 @@ export function withAllowances(items, allowances) {
     if (!a) return i
     return {
       ...i,
+      shared: true,   // shared with this member (others are only visible via a colleague's order)
       allowance_qty: a.allowance, allowance_used: a.used, allowance_left: a.left,
       available_qty: a.left == null ? i.available_qty : Math.min(i.available_qty ?? 0, a.left),
     }

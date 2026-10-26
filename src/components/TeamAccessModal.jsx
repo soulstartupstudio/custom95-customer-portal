@@ -2,13 +2,15 @@
 // or Warehouse only — then pick which warehouse items they may order and, per item, an optional
 // total allowance ("up to 50"). Used so far is shown next to it; raise the allowance to top up.
 // The database enforces all of this (portal_set_member_access, portal_item_access, allowance trigger).
+// "Copy items from…" takes a colleague's items + allowances (same department listed first), so a
+// department doesn't have to be set up person by person.
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Search, Package, Loader2 } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
 import { loadAllowances } from '../lib/teamAccess'
 
-export default function TeamAccessModal({ company, member, onClose, onSaved }) {
+export default function TeamAccessModal({ company, member, team = [], onClose, onSaved }) {
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.email
   const [role, setRole] = useState(member.portal_role === 'warehouse' ? 'warehouse' : 'admin')
   const [items, setItems] = useState(null)
@@ -16,6 +18,22 @@ export default function TeamAccessModal({ company, member, onClose, onSaved }) {
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [copying, setCopying] = useState(false)
+  const dept = (member.department || '').trim().toLowerCase()
+  const mates = team.filter((t) => t.portal_role === 'warehouse' && t.id !== member.id)
+    .sort((a, b) => Number((b.department || '').trim().toLowerCase() === dept) - Number((a.department || '').trim().toLowerCase() === dept))
+  const copyFrom = async (fromId) => {
+    if (!fromId) return
+    setCopying(true); setError(null)
+    const { data, error: e } = await supabase.from('portal_item_access').select('inventory_id, allowance_qty').eq('contact_id', fromId)
+    setCopying(false)
+    if (e) { setError(e.message); return }
+    setShared((m) => {
+      const next = { ...m }
+      for (const r of data || []) next[r.inventory_id] = { used: 0, ...next[r.inventory_id], on: true, allowance: r.allowance_qty == null ? '' : String(r.allowance_qty) }
+      return next
+    })
+  }
 
   useEffect(() => {
     let live = true
@@ -76,7 +94,7 @@ export default function TeamAccessModal({ company, member, onClose, onSaved }) {
     <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-xl shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">Access · {name}</h3>
+          <h3 className="text-base font-semibold text-gray-900">Access · {name}{member.department ? <span className="font-normal text-gray-500"> · {member.department}</span> : ''}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4 overflow-y-auto">
@@ -101,6 +119,17 @@ export default function TeamAccessModal({ company, member, onClose, onSaved }) {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mb-2">Allowance = how many they may order in total. Leave empty for no limit; raise it any time to top up.</p>
+              {mates.length > 0 && (
+                <div className="flex items-center gap-2 mb-2">
+                  <select defaultValue="" onChange={(e) => { copyFrom(e.target.value); e.target.value = '' }} disabled={copying}
+                    className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
+                    <option value="">Copy items from…</option>
+                    {mates.map((t) => <option key={t.id} value={t.id}>{[t.first_name, t.last_name].filter(Boolean).join(' ')}{t.department ? ` · ${t.department}` : ''}</option>)}
+                  </select>
+                  {copying && <Loader2 size={14} className="animate-spin text-gray-400" />}
+                  <span className="text-[11px] text-gray-400">adds their items and allowances here — check, then Save</span>
+                </div>
+              )}
               {items == null ? <div className="py-8 flex justify-center"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
                 : items.length === 0 ? <p className="text-sm text-gray-500 py-4">No warehouse stock yet.</p> : (
                   <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">

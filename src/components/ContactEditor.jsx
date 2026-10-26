@@ -5,7 +5,7 @@ import { PrimaryButton, SecondaryButton } from './ui'
 import { hasTeamAccess } from '../lib/teamAccess'
 
 const EMPTY = {
-  first_name: '', last_name: '', role: '',
+  first_name: '', last_name: '', role: '', department: '',
   email: '', phone: '', whatsapp_phone: '',
   profile_image_url: '',
 }
@@ -14,7 +14,9 @@ const EMPTY = {
  * Add or edit a contact. Pass `contact` to edit; omit to create.
  * Handles profile picture upload to the public `profile-pictures` bucket.
  */
-export default function ContactEditor({ company, contact, onSaved, onCancel, title }) {
+// team: the company's other team members (Team tab) — for department suggestions and
+// "Same access as…" when adding a warehouse-only member.
+export default function ContactEditor({ company, contact, onSaved, onCancel, title, team = [] }) {
   const [form, setForm] = useState({ ...EMPTY, ...(contact ?? {}) })
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -25,6 +27,12 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
   // invite they get right away never opens the full portal. Existing members: Team tab › Access.
   const canChooseAccess = !isEdit && hasTeamAccess(company)
   const [access, setAccess] = useState('admin')
+  const [copyFrom, setCopyFrom] = useState('')
+  const departments = [...new Set(team.map((t) => t.department?.trim()).filter(Boolean))].sort()
+  // Warehouse-only colleagues to copy items + allowances from; same department first.
+  const dept = (form.department || '').trim().toLowerCase()
+  const warehouseMates = team.filter((t) => t.portal_role === 'warehouse' && t.id !== contact?.id)
+    .sort((a, b) => Number((b.department || '').trim().toLowerCase() === dept) - Number((a.department || '').trim().toLowerCase() === dept))
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -54,6 +62,7 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
       first_name: form.first_name.trim(),
       last_name: form.last_name.trim(),
       role: form.role?.trim() || null,
+      department: form.department?.trim() || null,
       email: form.email?.trim() || null,
       phone: form.phone?.trim() || null,
       whatsapp_phone: form.whatsapp_phone?.trim() || null,
@@ -63,10 +72,27 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
     // Their portal_auth_id binds on first sign-in via App.jsx's auto-claim flow.
     if (!isEdit) payload.portal_active = true
     if (!isEdit && canChooseAccess && access === 'warehouse') payload.portal_role = 'warehouse'
-    const res = isEdit
-      ? await supabase.from('contacts').update(payload).eq('id', contact.id).select().single()
-      : await supabase.from('contacts').insert(payload).select().single()
-    if (res.error) { setBusy(false); setError(res.error.message); return }
+    let res
+    if (isEdit) {
+      // The portal may only edit your own details or a not-yet-invited teammate; the department
+      // of anyone in the team is set through portal_set_member_department.
+      const { department, ...rest } = payload
+      const upd = await supabase.from('contacts').update(rest).eq('id', contact.id).select()
+      if (upd.error) { setBusy(false); setError(upd.error.message); return }
+      if ((department || null) !== (contact.department?.trim() || null)) {
+        const { error: depErr } = await supabase.rpc('portal_set_member_department', { p_contact_id: contact.id, p_department: department })
+        if (depErr) { setBusy(false); setError(depErr.message); return }
+      }
+      res = { data: upd.data?.[0] || { ...contact, ...payload } }
+    } else {
+      res = await supabase.from('contacts').insert(payload).select().single()
+      if (res.error) { setBusy(false); setError(res.error.message); return }
+      // "Same access as …": copy the colleague's items + allowances to the new member.
+      if (payload.portal_role === 'warehouse' && copyFrom) {
+        const { error: cpErr } = await supabase.rpc('portal_copy_item_access', { p_from: copyFrom, p_to: res.data.id })
+        if (cpErr) { setBusy(false); setError(`Teammate saved, but copying access failed: ${cpErr.message}`); onSaved?.(res.data); return }
+      }
+    }
 
     // On add: fire the portal-invite edge function so they get a welcome email
     // with a sign-in link. We don't block the save if the email fails — just
@@ -119,7 +145,11 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
             <input type="text" value={form.first_name} onChange={(e) => update('first_name', e.target.value)} placeholder="First name *" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <input type="text" value={form.last_name} onChange={(e) => update('last_name', e.target.value)} placeholder="Last name *" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <input type="text" value={form.role || ''} onChange={(e) => update('role', e.target.value)} placeholder="Role (e.g. Marketing Lead)" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div className="grid grid-cols-2 gap-2">
+            <input type="text" value={form.role || ''} onChange={(e) => update('role', e.target.value)} placeholder="Role (e.g. Marketing Lead)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="text" list="team-departments" value={form.department || ''} onChange={(e) => update('department', e.target.value)} placeholder="Department (e.g. Events)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <datalist id="team-departments">{departments.map((d) => <option key={d} value={d} />)}</datalist>
+          </div>
           <input type="email" value={form.email || ''} onChange={(e) => update('email', e.target.value)} placeholder="Email" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           {canChooseAccess && (
             <div className="rounded-lg border border-gray-200 p-2.5">
@@ -133,7 +163,17 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
                   </button>
                 ))}
               </div>
-              {access === 'warehouse' && <p className="text-[11px] text-gray-500 mt-1.5">After saving: share the items they may order (and how many) under Access on their card, then press Invite.</p>}
+              {access === 'warehouse' && (
+                <div className="mt-2 space-y-1.5">
+                  {warehouseMates.length > 0 && (
+                    <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
+                      <option value="">Same items as… (optional)</option>
+                      {warehouseMates.map((t) => <option key={t.id} value={t.id}>{[t.first_name, t.last_name].filter(Boolean).join(' ')}{t.department ? ` · ${t.department}` : ''}</option>)}
+                    </select>
+                  )}
+                  <p className="text-[11px] text-gray-500">{copyFrom ? 'Their items and allowances are copied — adjust under Access on the card, then press Invite.' : 'After saving: share the items they may order (and how many) under Access on their card, then press Invite.'}</p>
+                </div>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
