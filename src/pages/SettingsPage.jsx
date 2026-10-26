@@ -70,8 +70,8 @@ export default function SettingsPage({ company, contact }) {
   const [editingAddr, setEditingAddr] = useState(null) // address object, 'new', or null
   const [editingProfile, setEditingProfile] = useState(false)
   const [me, setMe] = useState(contact)
-  // Subtabs: Company & profile | Billing (direct debit, billing details, plan invoices). ?sub=billing opens Billing.
-  const [sub, setSub] = useState(() => { try { return new URLSearchParams(window.location.search).get('sub') === 'billing' ? 'billing' : 'company' } catch { return 'company' } })
+  // Subtabs: Company & profile | Addresses | Billing (direct debit, billing details, plan invoices). ?sub= opens one.
+  const [sub, setSub] = useState(() => { try { const q = new URLSearchParams(window.location.search).get('sub'); return ['billing', 'addresses'].includes(q) ? q : 'company' } catch { return 'company' } })
 
   useEffect(() => {
     if (!company?.id) return
@@ -126,14 +126,65 @@ export default function SettingsPage({ company, contact }) {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        subtitle={sub === 'billing' ? 'How you pay your plan and warehouse invoices.' : 'Your company details and account manager.'}
+        subtitle={sub === 'billing' ? 'How you pay your plan and warehouse invoices.' : sub === 'addresses' ? 'Delivery and billing addresses for your orders.' : 'Your company details and account manager.'}
       />
       <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm">
-        {[['company', 'Company & profile'], ['billing', 'Billing']].map(([k, l]) => (
+        {[['company', 'Company & profile'], ['addresses', 'Addresses'], ['billing', 'Billing']].map(([k, l]) => (
           <button key={k} onClick={() => setSub(k)} className={`px-3 py-1.5 rounded-md ${sub === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>{l}</button>
         ))}
       </div>
-      {sub === 'billing' ? <BillingPanel /> : (
+      {sub === 'billing' ? <BillingPanel /> : sub === 'addresses' ? (
+        <div className="space-y-6">
+          <Card
+            title={`Addresses${addresses.length ? ` · ${addresses.length}` : ''}`}
+            action={
+              editingAddr !== 'new' && (
+                <button
+                  onClick={() => setEditingAddr('new')}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <Plus size={14} />Add address
+                </button>
+              )
+            }
+          >
+            <div className="space-y-3">
+              {editingAddr === 'new' && (
+                <AddressEditor
+                  company={company}
+                  title="New address"
+                  onSaved={handleAddressSaved}
+                  onCancel={() => setEditingAddr(null)}
+                />
+              )}
+
+              {addresses.length === 0 && editingAddr !== 'new' ? (
+                <div className="text-sm text-gray-400 py-6 text-center">
+                  No addresses on file. Click "Add address" to create one.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {addresses.map((a) =>
+                    editingAddr?.id === a.id ? (
+                      <div key={a.id} className="sm:col-span-2">
+                        <AddressEditor
+                          company={company}
+                          address={a}
+                          onSaved={handleAddressSaved}
+                          onCancel={() => setEditingAddr(null)}
+                          onDeleted={() => handleAddressDeleted(a.id)}
+                        />
+                      </div>
+                    ) : (
+                      <AddressCard key={a.id} address={a} onEdit={() => setEditingAddr(a)} onRemove={() => handleAddressRemove(a)} />
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      ) : (
 
       <div className="space-y-6">
           {/* Your profile */}
@@ -226,54 +277,6 @@ export default function SettingsPage({ company, contact }) {
             </Card>
           </div>
 
-          <Card
-            title={`Addresses${addresses.length ? ` · ${addresses.length}` : ''}`}
-            action={
-              editingAddr !== 'new' && (
-                <button
-                  onClick={() => setEditingAddr('new')}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
-                >
-                  <Plus size={14} />Add address
-                </button>
-              )
-            }
-          >
-            <div className="space-y-3">
-              {editingAddr === 'new' && (
-                <AddressEditor
-                  company={company}
-                  title="New address"
-                  onSaved={handleAddressSaved}
-                  onCancel={() => setEditingAddr(null)}
-                />
-              )}
-
-              {addresses.length === 0 && editingAddr !== 'new' ? (
-                <div className="text-sm text-gray-400 py-6 text-center">
-                  No addresses on file. Click "Add address" to create one.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {addresses.map((a) =>
-                    editingAddr?.id === a.id ? (
-                      <div key={a.id} className="sm:col-span-2">
-                        <AddressEditor
-                          company={company}
-                          address={a}
-                          onSaved={handleAddressSaved}
-                          onCancel={() => setEditingAddr(null)}
-                          onDeleted={() => handleAddressDeleted(a.id)}
-                        />
-                      </div>
-                    ) : (
-                      <AddressCard key={a.id} address={a} onEdit={() => setEditingAddr(a)} onRemove={() => handleAddressRemove(a)} />
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          </Card>
       </div>
       )}
 

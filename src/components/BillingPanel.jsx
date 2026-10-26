@@ -1,4 +1,4 @@
-// Settings › Billing (26 Oct 2026): billing details (from Moneybird), automatic payment of plan +
+// Settings › Billing (26 Oct 2026): billing details (from our bookkeeping), automatic payment of plan +
 // warehouse invoices by direct debit (a Moneybird Payments mandate — set up once on Moneybird's
 // own page, we never see bank details), and the latest plan / warehouse invoices with their status.
 // All through the portal-billing function; full-access users only.
@@ -14,14 +14,17 @@ const STATE = {
 }
 const monthLabel = (d) => new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
+// Customers never see the name of our bookkeeping software.
+const clean = (m) => String(m || 'Something went wrong').replace(/moneybird( payments)?/gi, 'our billing system')
+
 export async function billingCall(body) {
   const { data, error } = await supabase.functions.invoke('portal-billing', { body })
   if (error) {
     let msg = error.message
     try { const b = await error.context?.json(); if (b?.error) msg = b.error } catch { /* keep */ }
-    throw new Error(msg)
+    throw new Error(clean(msg))
   }
-  if (data?.error) throw new Error(data.error)
+  if (data?.error) throw new Error(clean(data.error))
   return data
 }
 
@@ -77,7 +80,7 @@ export default function BillingPanel() {
                   Set up direct debit once and we collect each plan and warehouse invoice on its due date. You still receive every invoice by email,
                   and you can turn it off any time. Project invoices are not included.
                 </p>
-                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1"><ShieldCheck size={12} />You authorise it with your bank on Moneybird’s secure page — we never see your bank details.</p>
+                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1"><ShieldCheck size={12} />You authorise it once with your bank on a secure payment page — we never see your bank details.</p>
                 <div className="mt-3"><PrimaryButton onClick={setUp} disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}Set up direct debit</PrimaryButton></div>
               </>
             )}
