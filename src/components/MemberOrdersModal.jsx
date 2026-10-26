@@ -132,7 +132,7 @@ export default function MemberOrdersModal({ company, member, team = [], onClose 
                           <span className="flex-1 min-w-0 truncate text-gray-900">{p.name}{p.variant ? <span className="text-gray-500"> · {p.variant}</span> : ''}</span>
                           <span className="text-xs text-gray-500">{p.requests} request{p.requests === 1 ? '' : 's'}</span>
                           <span className="w-14 text-right font-semibold text-gray-900">{p.qty}×</span>
-                          {a?.allowance != null && <span className={`w-24 text-right text-xs ${a.left === 0 ? 'text-red-600' : 'text-gray-500'}`}>{a.left} of {a.allowance} left</span>}
+                          {a?.allowance != null && <span className={`w-24 text-right text-xs ${a.ownLeft === 0 ? 'text-red-600' : 'text-gray-500'}`}>{a.ownLeft} of {a.allowance} left</span>}
                         </div>
                       )
                     })}

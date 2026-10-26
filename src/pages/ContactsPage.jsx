@@ -5,6 +5,7 @@ import { PageHeader, EmptyState, Spinner, Badge, Card, PrimaryButton } from '../
 import ContactEditor from '../components/ContactEditor'
 import TeamAccessModal from '../components/TeamAccessModal'
 import MemberOrdersModal from '../components/MemberOrdersModal'
+import DepartmentAllowances from '../components/DepartmentAllowances'
 import { hasTeamAccess } from '../lib/teamAccess'
 import { hasPartnerPlan, requestPlanInterest } from '../lib/planBenefits'
 
@@ -342,6 +343,7 @@ export default function ContactsPage({ company, contact }) {
       )}
 
       <TeamAccessIntro company={company} />
+      {teamAccess && <DepartmentAllowances company={company} team={rows} />}
       <CostsBudgetsTeaser company={company} />
 
       {ordersFor && (

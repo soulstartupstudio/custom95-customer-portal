@@ -66,6 +66,9 @@ function InventoryCard({ item, incomingEta, onClick, onRestock }) {
         {item.allowance_qty != null && (
           <div className="mt-1 text-[11px] text-blue-700">Your allowance: {item.allowance_left} of {item.allowance_qty} left</div>
         )}
+        {item.dept_allowance_qty != null && (
+          <div className="mt-0.5 text-[11px] text-indigo-700">Department: {item.dept_allowance_left} of {item.dept_allowance_qty} left</div>
+        )}
         <div className="mt-2 flex items-center justify-between">
           <div>
             <div className="text-xs text-gray-400">Available</div>

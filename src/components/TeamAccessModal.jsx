@@ -45,7 +45,8 @@ export default function TeamAccessModal({ company, member, team = [], onClose, o
       ])
       if (!live) return
       setItems(inv || [])
-      setShared(Object.fromEntries(Object.entries(usage).map(([id, a]) => [id, { on: true, allowance: a.allowance == null ? '' : String(a.allowance), used: a.used }])))
+      // Personal items only — department allowances are set per department on the Team tab.
+      setShared(Object.fromEntries(Object.entries(usage).filter(([, a]) => a.personal).map(([id, a]) => [id, { on: true, allowance: a.allowance == null ? '' : String(a.allowance), used: a.used }])))
     })()
     return () => { live = false }
   }, [company.id, member.id])
