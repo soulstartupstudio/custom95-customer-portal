@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Check, Upload, User } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
@@ -28,7 +28,21 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
   const canChooseAccess = !isEdit && hasTeamAccess(company)
   const [access, setAccess] = useState('admin')
   const [copyFrom, setCopyFrom] = useState('')
-  const departments = [...new Set(team.map((t) => t.department?.trim()).filter(Boolean))].sort()
+  // Departments to pick from: the team's + those that only have a department allowance so far.
+  // Picked from a list (no free typing) so "Events" and "events team" don't split one department;
+  // "+ New department…" is the explicit way to start one.
+  const [allowanceDepts, setAllowanceDepts] = useState([])
+  useEffect(() => {
+    supabase.rpc('portal_department_allowances').then(({ data }) => setAllowanceDepts([...new Set((data || []).map((r) => r.department))]))
+  }, [])
+  const departments = (() => {
+    const m = new Map()
+    for (const t of team) if (t.department?.trim()) m.set(t.department.trim().toLowerCase(), t.department.trim())
+    for (const d of allowanceDepts) if (d && !m.has(d)) m.set(d, d.charAt(0).toUpperCase() + d.slice(1))
+    return [...m.values()].sort((a, b) => a.localeCompare(b))
+  })()
+  const currentDept = (form.department || '').trim()
+  const [newDept, setNewDept] = useState(false)
   // Warehouse-only colleagues to copy items + allowances from; same department first.
   const dept = (form.department || '').trim().toLowerCase()
   const warehouseMates = team.filter((t) => t.portal_role === 'warehouse' && t.id !== contact?.id)
@@ -147,8 +161,22 @@ export default function ContactEditor({ company, contact, onSaved, onCancel, tit
           </div>
           <div className="grid grid-cols-2 gap-2">
             <input type="text" value={form.role || ''} onChange={(e) => update('role', e.target.value)} placeholder="Role (e.g. Marketing Lead)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input type="text" list="team-departments" value={form.department || ''} onChange={(e) => update('department', e.target.value)} placeholder="Department (e.g. Events)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <datalist id="team-departments">{departments.map((d) => <option key={d} value={d} />)}</datalist>
+            {newDept ? (
+              <div className="flex gap-1">
+                <input type="text" autoFocus value={form.department || ''} onChange={(e) => update('department', e.target.value)} placeholder="New department name"
+                  className="flex-1 min-w-0 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => { setNewDept(false); update('department', contact?.department || '') }} className="px-2 text-gray-400 hover:text-gray-700" title="Back to the list">×</button>
+              </div>
+            ) : (
+              <select
+                value={departments.some((d) => d.toLowerCase() === currentDept.toLowerCase()) ? departments.find((d) => d.toLowerCase() === currentDept.toLowerCase()) : ''}
+                onChange={(e) => { if (e.target.value === '__new') { setNewDept(true); update('department', '') } else update('department', e.target.value) }}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">No department</option>
+                {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+                <option value="__new">+ New department…</option>
+              </select>
+            )}
           </div>
           <input type="email" value={form.email || ''} onChange={(e) => update('email', e.target.value)} placeholder="Email" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           {canChooseAccess && (
