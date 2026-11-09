@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { FileText, Receipt, Palette, FolderKanban, ArrowRight, Sparkles, Mail, Phone, Package, Clock } from 'lucide-react'
 import { Card, Badge, StatusBadge, Spinner, formatCents, formatDate, PrimaryButton } from '../components/ui'
 import LoyaltyCard from '../components/LoyaltyCard'
+import { BrandshopReportNudge } from '../components/BrandshopReportsWidget'
 import PartnerPlanUpsell from '../components/PartnerPlanUpsell'
 import GettingStarted from '../components/GettingStarted'
 import { fetchPortalPlan } from '../lib/portalPlan'
@@ -155,6 +156,7 @@ export default function DashboardPage({ session, contact, company, navigate }) {
       {!hasPartnerPlan(company) && <PartnerPlanUpsell variant="banner" />}
       {plan?.onboarding && <GettingStarted onboarding={plan.onboarding} navigate={navigate} />}
 
+      <BrandshopReportNudge company={company} navigate={navigate} />
       <LoyaltyCard company={company} onUseCredit={() => navigate('proposals')} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
