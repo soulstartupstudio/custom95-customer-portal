@@ -15,17 +15,6 @@ import { fetchDesignMockupUrls } from '../lib/designThumbnails'
 const QUOTE_LABELS = { draft: 'Finalising', sent: 'Ready for approval', accepted: 'Accepted', declined: 'Declined' }
 const QUOTE_TONES = { draft: 'gray', sent: 'blue', accepted: 'green', declined: 'red' }
 
-// Team app prefixes brief_notes with "Denied: <reason>\n\n<rest>" or "On Hold: <reason>\n\n<rest>".
-function parseStatusReason(status, brief_notes) {
-  if (!brief_notes) return { reason: null, cleaned: brief_notes }
-  const prefix = status === 'denied' ? 'Denied:' : status === 'on_hold' ? 'On Hold:' : null
-  if (!prefix || !brief_notes.startsWith(prefix)) return { reason: null, cleaned: brief_notes }
-  const firstLine = brief_notes.split('\n')[0]
-  const reason = firstLine.replace(prefix, '').trim()
-  const rest = brief_notes.split('\n').slice(1).join('\n').trim()
-  return { reason, cleaned: rest || null }
-}
-
 function QuantityEditor({ item, onChanged }) {
   const [qty, setQty] = useState(item.quantity ?? '')
   const [saving, setSaving] = useState(false)
@@ -478,35 +467,15 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
             </div>
           )}
 
-          {/* Reason/notes/brief callouts */}
-          {(() => {
-            const { reason, cleaned } = parseStatusReason(proposal.status, proposal.brief_notes)
-            const isDenied = proposal.status === 'denied'
-            return (
-              <>
-                {reason && (
-                  <div className={`rounded-lg p-3 border ${isDenied ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-                    <div className={`text-xs font-semibold mb-1 ${isDenied ? 'text-red-900' : 'text-amber-900'}`}>
-                      {isDenied ? 'Reason for decline' : 'On hold — reason'}
-                    </div>
-                    <div className={`text-sm ${isDenied ? 'text-red-800' : 'text-amber-800'}`}>{reason}</div>
-                  </div>
-                )}
-                {proposal.notes_for_client && (
-                  <div className="rounded-lg p-3 border bg-blue-50 border-blue-100">
-                    <div className="text-xs font-semibold mb-1 text-blue-900">Note from your account manager</div>
-                    <div className="text-sm text-blue-900 whitespace-pre-wrap">{proposal.notes_for_client}</div>
-                  </div>
-                )}
-                {cleaned && (
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1 font-semibold uppercase tracking-wide">Brief</div>
-                    <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">{cleaned}</div>
-                  </div>
-                )}
-              </>
-            )
-          })()}
+          {/* Only the customer-visible note is shown. The proposal brief field
+              ("Project info (internal)" in the team app, incl. the denied / on hold
+              reason) is internal and never rendered here. */}
+          {proposal.notes_for_client && (
+            <div className="rounded-lg p-3 border bg-blue-50 border-blue-100">
+              <div className="text-xs font-semibold mb-1 text-blue-900">Note from your account manager</div>
+              <div className="text-sm text-blue-900 whitespace-pre-wrap">{proposal.notes_for_client}</div>
+            </div>
+          )}
 
           {/* ----- ITEMS BLOCK (customer + team merged) ----- */}
           {(() => {
@@ -890,7 +859,7 @@ export default function ProposalsPage({ company, contact, onStartProposal, onOpe
       setLoading(true)
       const [propRes, projRes] = await Promise.all([
         supabase.from('proposals')
-          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, lead_days, occasion, brief_notes, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, production_confirmed_at, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
+          .select('id, proposal_number, name, status, type, value_cents, quantity_est, deadline_at, lead_days, occasion, notes_for_client, proposal_heat, created_at, created_by_client, shipment_type, delivery_address_id, delivery_address_ids, owner_user_id, production_confirmed_at, recipient_contact_name, recipient_contact_phone, recipient_contact_email')
           .eq('company_id', company.id)
           .order('created_at', { ascending: false }),
         supabase.from('projects').select('id, project_number, name, stage, proposal_id').eq('company_id', company.id),

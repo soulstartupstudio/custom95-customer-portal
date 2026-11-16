@@ -8,6 +8,7 @@ import { StatusBadge, formatDate, PrimaryButton, SecondaryButton, Badge } from '
 import DesignAttachments from './DesignAttachments'
 import ProductionConfirmModal from './ProductionConfirmModal'
 import { signDesignFileUrl } from '../lib/designThumbnails'
+import { appendCustomerBrief } from '../lib/customerBrief'
 
 export default function DesignDrawer({ design, company, contact, onClose, onUpdated }) {
   const [files, setFiles] = useState([]) // ALL design_files, signed
@@ -15,7 +16,9 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
   const [mode, setMode] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [briefDraft, setBriefDraft] = useState(design.brief_notes || '')
+  // The brief field is shared with the team (it can hold internal / supplier
+  // details), so it is never shown to the customer and never prefilled.
+  const [briefDraft, setBriefDraft] = useState('')
   const [submittingBrief, setSubmittingBrief] = useState(false)
   const [hero, setHero] = useState(null)
   const [heroIsMockup, setHeroIsMockup] = useState(false)
@@ -82,7 +85,7 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
     setSubmittingBrief(true); setError(null)
     const { error: err } = await supabase
       .from('design_tasks')
-      .update({ brief_notes: briefDraft.trim(), status: 'in_progress' })
+      .update({ brief_notes: appendCustomerBrief(design.brief_notes, briefDraft), status: 'in_progress' })
       .eq('id', design.id)
     setSubmittingBrief(false)
     if (err) { setError(err.message); return }
@@ -303,14 +306,6 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
         </div>
 
         <div className="px-6 pb-6 space-y-6">
-          {/* BRIEF (read-only) */}
-          {!isAwaitingBrief && design.brief_notes && (
-            <div>
-              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Brief</div>
-              <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">{design.brief_notes}</div>
-            </div>
-          )}
-
           {/* LOGOS & ASSETS (combined: team + customer) */}
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Logos &amp; assets</div>
@@ -384,9 +379,6 @@ export default function DesignDrawer({ design, company, contact, onClose, onUpda
                           {isVApproved && <Badge tone="green">Approved</Badge>}
                         </div>
                         <div className="text-xs text-gray-400">{formatDate(f.created_at)}</div>
-                        {f.notes && !isVApproved && (
-                          <div className="text-xs text-gray-700 whitespace-pre-wrap mt-1.5 bg-white/60 rounded px-2 py-1">{f.notes}</div>
-                        )}
                       </div>
                     </button>
                   )

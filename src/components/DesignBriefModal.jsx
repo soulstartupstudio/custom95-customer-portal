@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Palette, Upload, Check, Image as ImageIcon } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
+import { appendCustomerBrief } from '../lib/customerBrief'
 
 // Shown immediately after a customer approves their quote. Captures ONE combined
 // design brief (how they want it to look) plus an optional logo/asset upload, and
@@ -26,8 +27,8 @@ export default function DesignBriefModal({ proposalId, company, contact, onClose
       if (cancelled) return
       const rows = data ?? []
       setTasks(rows)
-      const existing = rows.find((t) => t.brief_notes?.trim())?.brief_notes
-      if (existing) setInstructions(existing)
+      // The existing brief is not shown here: the team can write internal /
+      // supplier details in the same field. The customer starts from an empty box.
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -60,7 +61,7 @@ export default function DesignBriefModal({ proposalId, company, contact, onClose
       //    any that are still awaiting a brief, and attach the uploaded logo.
       for (const t of tasks) {
         const patch = {}
-        if (brief) patch.brief_notes = brief
+        if (brief) patch.brief_notes = appendCustomerBrief(t.brief_notes, brief)
         if (t.status === 'awaiting_brief') patch.status = 'in_progress'
         if (Object.keys(patch).length) {
           const { error: uErr } = await supabase.from('design_tasks').update(patch).eq('id', t.id)
