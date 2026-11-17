@@ -2,7 +2,7 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Receipt, Palette, FolderKanban,
-  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X, Handshake
+  Warehouse, BookOpen, Store, Users, Settings as SettingsIcon, LogOut, Plus, Sparkles, FileSpreadsheet, Menu, X, Handshake, MessageSquarePlus
 } from 'lucide-react'
 // Pages load on demand. Eagerly importing all fourteen (plus the 1,800-line
 // proposal wizard) meant every customer downloaded Brandshop, Warehouse and the
@@ -22,6 +22,7 @@ const BrandshopPage = lazy(() => import('../pages/BrandshopPage'))
 const BrandPage = lazy(() => import('../pages/BrandPage'))
 const YourPlanPage = lazy(() => import('../pages/YourPlanPage'))
 const MerchAuditPage = lazy(() => import('../pages/MerchAuditPage'))
+const FeedbackPage = lazy(() => import('../pages/FeedbackPage'))
 const StartProposalWizard = lazy(() => import('./StartProposalWizard'))
 import { Spinner } from './ui'
 import WhatsAppButton from './WhatsAppButton'
@@ -42,6 +43,7 @@ const tabs = [
   { id: 'catalogue', label: 'Catalogue', icon: BookOpen },
   { id: 'contacts', label: 'Team', icon: Users },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
+  { id: 'feedback', label: 'Feedback', icon: MessageSquarePlus },
 ]
 
 // Tabs a URL / saved value may select. 'audit' has no nav entry but is a real page.
@@ -143,6 +145,7 @@ export default function Layout({ session, contact, company }) {
       case 'catalogue': return <CataloguePage company={company} contact={contact} onStartProposalWithItem={openWizardWithItem} onStartProposalWithItems={openWizardWithItems} />
       case 'contacts': return <ContactsPage company={company} contact={contact} />
       case 'settings': return <SettingsPage company={company} contact={contact} />
+      case 'feedback': return <FeedbackPage company={company} deepLinkId={linkId('feedback')} clearDeepLink={clearDeepLink} />
       case 'plan': return <YourPlanPage key={refreshKey} company={company} navigate={setActiveTab} />
       // The Merch Questionnaire has no nav entry of its own — it's reached from Your Plan / Getting Started.
       case 'audit': return <MerchAuditPage company={company} navigate={setActiveTab} />
