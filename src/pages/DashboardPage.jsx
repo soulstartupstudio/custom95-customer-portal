@@ -88,7 +88,7 @@ export default function DashboardPage({ session, contact, company, navigate }) {
         ...(recentQuote.data ?? []).map((r) => ({ type: 'quote', id: r.id, title: `Quote ${formatCents(r.total_cents)}`, status: r.status, date: r.created_at, tab: 'quotes' })),
         ...(recentDesign.data ?? []).map((r) => ({ type: 'design', id: r.id, title: r.title, status: r.status, date: r.created_at, tab: 'designs' })),
         ...(recentProj.data ?? []).map((r) => {
-          const num = r.proposals?.proposal_number ?? r.project_number
+          const num = r.project_number  // FB-133: same number as the team app
           return { type: 'project', id: r.id, title: r.name || `Project #${num}`, subtitle: `#${num}`, status: r.stage, date: r.created_at, tab: 'projects' }
         }),
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)

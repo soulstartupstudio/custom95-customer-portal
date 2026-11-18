@@ -167,9 +167,14 @@ export function SecondaryButton({ children, onClick, type = 'button', disabled =
   )
 }
 
+// FB-132: never round a price — €5.95 must not show as €6. Whole amounts stay short
+// (€1,500); anything with cents shows them (€5.95, €1,487.50), same as the team app.
 export function formatCents(cents) {
   if (cents == null) return '—'
-  return '€' + (cents / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })
+  const whole = Math.round(cents) % 100 === 0
+  return '€' + (cents / 100).toLocaleString('en-US', whole
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // Per-piece prices and price bands need the cents: a €0.05 postcard or a €2.10

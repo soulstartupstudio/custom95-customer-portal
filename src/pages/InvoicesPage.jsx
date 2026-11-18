@@ -37,7 +37,7 @@ const FILTERS = [
 // Returns { label, sub, title } so the column can show a primary line + hint.
 function resolveReference(inv) {
   if (inv.project_id && inv.projects) {
-    const num = inv.projects.proposals?.proposal_number ?? inv.projects.project_number
+    const num = inv.projects.project_number  // FB-133: one number — the project number the team uses
     return {
       label: inv.projects.name || (num ? `Project #${num}` : 'Project'),
       sub: num ? `Project #${num}` : null,

@@ -430,7 +430,7 @@ function ProjectDetail({ project, company, contact, onClose, onRate }) {
       <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
-            <div className="text-xs text-gray-500">Project #{project.display_number ?? project.project_number}</div>
+            <div className="text-xs text-gray-500">Project #{project.display_number ?? project.project_number}{project.from_proposal && project.from_proposal !== (project.display_number ?? project.project_number) ? ` · from proposal #${project.from_proposal}` : ''}</div>
             <h2 className="text-lg font-semibold text-gray-900">{project.name || `Project ${project.display_number ?? project.project_number}`}</h2>
           </div>
           <div className="flex items-center gap-2">
@@ -721,10 +721,12 @@ export default function ProjectsPage({ company, contact, deepLinkId, deepLinkRev
         .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       if (cancelled) return
-      // Display projects using the originating proposal number (same as customer's proposal #)
+      // FB-133/160: projects show their own project number — the one the team, suppliers and
+      // invoices use. The proposal it came from is shown underneath in the project panel.
       const enriched = (data ?? []).map((p) => ({
         ...p,
-        display_number: p.proposals?.proposal_number ?? p.project_number,
+        display_number: p.project_number,
+        from_proposal: p.proposals?.proposal_number ?? null,
       }))
       setRows(enriched)
       setLoading(false)
