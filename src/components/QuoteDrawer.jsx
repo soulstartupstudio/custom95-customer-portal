@@ -216,12 +216,17 @@ export default function QuoteDrawer({ quote, company, contact, onClose, onUpdate
                           {rows.length > 0 && (
                             <tr className="bg-blue-50/40">
                               <td colSpan={4} className="px-3 pb-2.5 pt-1">
-                                <div className="text-[11px] font-semibold text-blue-800 inline-flex items-center gap-1 mb-1"><TrendingDown size={12} />Order more, pay less per piece</div>
+                                <div className="text-[11px] font-semibold text-blue-800 inline-flex items-center gap-1 mb-1">
+                                  {rows.some((r) => !r.isSmaller) ? <><TrendingDown size={12} />Order more, pay less per piece</> : 'Other quantities'}
+                                </div>
                                 <div className="space-y-0.5">
                                   {rows.map((r) => (
                                     <div key={r.id} className="flex items-center justify-between text-xs">
-                                      <span className="text-gray-700"><span className="font-medium text-gray-900">{r.quantity} pcs</span> · {formatCents(r.unitCents)}/pc</span>
-                                      {r.saving.isBetter && <span className="text-green-700 font-medium">save {formatCents(r.saving.perPieceCents)}/pc</span>}
+                                      <span className="text-gray-700">
+                                        {r.isSmaller && <span className="text-gray-500">Smaller run: </span>}
+                                        <span className="font-medium text-gray-900">{r.quantity} pcs</span> · {formatCents(r.unitCents)}/pc
+                                      </span>
+                                      {!r.isSmaller && r.saving.isBetter && <span className="text-green-700 font-medium">save {formatCents(r.saving.perPieceCents)} per piece</span>}
                                     </div>
                                   ))}
                                 </div>

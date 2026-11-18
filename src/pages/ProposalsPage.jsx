@@ -237,7 +237,7 @@ function ProposalDetail({ proposal, company, contact, onClose }) {
         supabase.from('proposal_files').select('id, file_name, file_type, storage_url, created_at').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
         supabase.from('proposal_requested_items').select('*, catalogue_items(main_photo_url, production_time_days)').eq('proposal_id', proposal.id).order('created_at'),
         supabase.from('quotes').select('*').eq('proposal_id', proposal.id).order('created_at', { ascending: false }),
-        supabase.from('proposal_contacts').select('role, contacts(id, first_name, last_name, role, email, profile_image_url)').eq('proposal_id', proposal.id),
+        supabase.from('proposal_contacts').select('role, contacts!proposal_contacts_contact_id_fkey(id, first_name, last_name, role, email, profile_image_url)').eq('proposal_id', proposal.id),
         supabase.from('design_tasks').select('*, proposal_requested_items!proposal_requested_item_id(reference_url, catalogue_items(main_photo_url))').eq('proposal_id', proposal.id).order('created_at'),
       ])
       setFiles(fRes.data ?? [])

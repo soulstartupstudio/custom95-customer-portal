@@ -13,11 +13,11 @@ export function optionsAllowed(quote) {
   return !fixed && !credit && !barter
 }
 
-// Percentage discounts scale to any quantity, so an option price reflects them.
-export function effectiveUnitCents(unitCents, quote) {
-  const pct = quote?.discount_type === 'pct' ? (quote.discount_pct || 0) : 0
-  if (!pct) return unitCents
-  return Math.round(unitCents * (1 - pct / 100))
+// The option's unit price exactly as the seller typed it (GROSS). The quote's percentage
+// discount is taken once, off the subtotal — re-pricing the option would discount it twice.
+// (Team app changed this on 2026-10-21; synced here 2026-11-18.)
+export function effectiveUnitCents(unitCents, _quote) {
+  return unitCents || 0
 }
 
 export function optionSaving(baseUnitCents, optionUnitCents, optionQty) {
@@ -25,12 +25,14 @@ export function optionSaving(baseUnitCents, optionUnitCents, optionQty) {
   return { perPieceCents: perPiece, totalCents: perPiece * (optionQty || 0), isBetter: perPiece > 0 }
 }
 
-// Display rows for one line: sorted ascending, dropping options at/below the quoted qty.
+// Display rows for one line, sorted ascending. FB-122: smaller runs are shown too
+// (isSmaller — higher price per piece, never a "save"); only the quoted qty itself is dropped.
 export function optionRows(lineItem, options, quote) {
   if (!lineItem || !options?.length || !optionsAllowed(quote)) return []
   const baseUnit = effectiveUnitCents(lineItem.unit_sales_price_cents || 0, quote)
+  const baseQty = lineItem.quantity || 0
   return options
-    .filter((o) => (o.quantity || 0) > (lineItem.quantity || 0))
+    .filter((o) => (o.quantity || 0) > 0 && (o.quantity || 0) !== baseQty)
     .sort((a, b) => (a.quantity || 0) - (b.quantity || 0))
     .map((o) => {
       const unit = effectiveUnitCents(o.unit_sales_price_cents || 0, quote)
@@ -39,10 +41,11 @@ export function optionRows(lineItem, options, quote) {
         quantity: o.quantity,
         unitCents: unit,
         totalCents: unit * (o.quantity || 0),
+        isSmaller: (o.quantity || 0) < baseQty,
         saving: optionSaving(baseUnit, unit, o.quantity),
       }
     })
 }
 
 export const OPTION_FOOTNOTE =
-  'Larger quantities may affect lead time and shipping. Final size split confirmed on approval.'
+  'Other quantities may affect lead time and shipping. Final size split confirmed on approval.'
