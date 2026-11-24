@@ -45,7 +45,7 @@ export default function PartnerPlanUpsell({ feature = null, variant = 'full', ic
               </div>
               <h3 className="text-base font-semibold text-gray-900">{featureLine}</h3>
               <p className="text-sm text-gray-600 mt-0.5">
-                Warehousing, fulfilment, cost insights, custom packaging and more — from €95/mo.
+                Warehousing, fulfilment, cost insights, custom packaging and more — from €295/mo.
                 {feature ? ` You can still use ${feature} below.` : ''}
               </p>
             </div>
@@ -133,7 +133,7 @@ export default function PartnerPlanUpsell({ feature = null, variant = 'full', ic
 
 function PlanCards({ sending, sentTier, onChoose }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
       {TIER_ORDER.map((key) => {
         const t = PLAN_TIERS[key]
         const highlights = PLAN_HIGHLIGHTS[key] || []

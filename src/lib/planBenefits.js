@@ -2,7 +2,10 @@ import { supabase } from './supabase'
 
 // Source of truth for Custom95 partner-plan tiers, mirrored from the team app's
 // src/lib/planBenefits.js. Keep the two in sync when the plans change.
-export const TIER_ORDER = ['starter', 'growth', 'scale', 'enterprise']
+// Every tier a company can be on. Starter (€95) is discontinued (FB-182): customers already on
+// it keep it (and stay partners), but it is no longer offered on the upsell cards / compare table.
+export const ALL_TIERS = ['starter', 'growth', 'scale', 'enterprise']
+export const TIER_ORDER = ['growth', 'scale', 'enterprise']
 
 export const PLAN_LABELS = {
   starter: 'Starter',
@@ -48,7 +51,7 @@ export const PLAN_BENEFITS = [
 // an empty value, or the literal string "none" — is treated as no partnership.
 export function hasPartnerPlan(company) {
   const t = (company?.plan_tier || '').toString().trim().toLowerCase()
-  return TIER_ORDER.includes(t)
+  return ALL_TIERS.includes(t)
 }
 
 export function planLabel(company) {
