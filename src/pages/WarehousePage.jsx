@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import {
   Package, TruckIcon, X, AlertTriangle, Activity, Plus, MapPin, Zap, Clock,
   ExternalLink, User, Mail, Phone, Calendar, Filter, Search, ArrowRight, Download,
-  RefreshCw, XCircle, CheckCircle2, Warehouse,
+  RefreshCw, XCircle, CheckCircle2, Warehouse, Undo2,
 } from 'lucide-react'
 import { PageHeader, StatusBadge, EmptyState, Spinner, formatDate, formatCents, Badge, PrimaryButton, SecondaryButton } from '../components/ui'
 import RequestShipmentWizard from '../components/RequestShipmentWizard'
@@ -224,7 +224,7 @@ function RequestCard({ request, items, onClick }) {
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-gray-900">{request.ship_to_name || 'Shipment request'}</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{eventNameOf(request) || request.ship_to_name || 'Shipment request'}</h3>
             <Badge tone={statusTone}>{statusLabel}</Badge>
             {request.shipping_speed && <Badge tone={request.shipping_speed === 'express' ? 'purple' : 'gray'}>{request.shipping_speed}</Badge>}
             {request.ship_asap && <Badge tone="blue"><Zap size={10} className="mr-0.5" />ASAP</Badge>}
@@ -264,6 +264,9 @@ function RequestCard({ request, items, onClick }) {
           </div>
         </div>
       )}
+      {returnAnswer(request) && (
+        <div className="text-xs text-gray-700 mt-3 flex items-center gap-1"><Undo2 size={11} className="text-gray-400" />{returnAnswer(request)}</div>
+      )}
       {request.notes && (
         <div className="text-xs text-gray-600 bg-gray-50 rounded p-2 mt-3 whitespace-pre-wrap">{request.notes}</div>
       )}
@@ -278,6 +281,33 @@ function RequestCard({ request, items, onClick }) {
 const isReturnOrder = (o) => !!o?.return_of_order_id || /^Return of shipment #/i.test(o?.notes || '')
 const orderTypeLabel = (o) => (isReturnOrder(o) ? 'return' : o?.order_type)
 
+// FB-191 / Qonto (26 Nov 2026): the event a shipment is for ("#349 · Shared Plates Dinner")
+// and the answer to "What comes back?".
+const eventNameOf = (x) => String(x?.event_name || '').trim()
+const shipmentTitle = (o) => [o?.order_number != null ? `#${o.order_number}` : '', eventNameOf(o)].filter(Boolean).join(' · ')
+const returnAnswer = (x) => {
+  if (x?.return_expected === 'none') return 'Nothing comes back'
+  if (x?.return_expected === 'all') return 'All items come back'
+  if (x?.return_expected === 'some') return `Some items come back${String(x?.return_items_note || '').trim() ? `: ${String(x.return_items_note).trim()}` : ''}`
+  if (x?.return_requested || x?.return_pickup_date) return 'A return pick-up is booked'
+  return null
+}
+function ReturnBlock({ x }) {
+  const what = returnAnswer(x)
+  if (!what) return null
+  const none = x?.return_expected === 'none'
+  return (
+    <div>
+      <div className="text-xs text-gray-500 mb-1 font-semibold flex items-center gap-1"><Undo2 size={12} />What comes back</div>
+      <div className="text-sm text-gray-900 bg-gray-50 rounded-lg p-3">
+        {what}
+        {!none && x?.return_pickup_date && <span className="text-gray-600"> · pick-up {formatDate(x.return_pickup_date)}</span>}
+        {!none && x?.return_label_included === true && <span className="text-gray-600"> · return label is in the box</span>}
+      </div>
+    </div>
+  )
+}
+
 // --- Shipment detail drawer ---
 function ShipmentDetail({ order, address, items, inventoryById, onClose }) {
   return (
@@ -285,7 +315,7 @@ function ShipmentDetail({ order, address, items, inventoryById, onClose }) {
       <div className="w-full max-w-2xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
-            <div className="text-xs text-gray-500">Shipment #{order.order_number}</div>
+            <div className="text-xs text-gray-500">Shipment {shipmentTitle(order)}</div>
             <h2 className="text-lg font-semibold text-gray-900">{orderTypeLabel(order) || 'Shipment'}</h2>
           </div>
           <div className="flex items-center gap-2">
@@ -368,6 +398,8 @@ function ShipmentDetail({ order, address, items, inventoryById, onClose }) {
               </div>
             </div>
           )}
+
+          <ReturnBlock x={order} />
 
           {order.notes && (
             <div>
@@ -843,7 +875,10 @@ export default function WarehousePage({ company, contact, onStartProposalWithIte
                     const totalQty = ms.reduce((s, m) => s + Math.abs(m.quantity || 0), 0)
                     return (
                       <tr key={o.id} onClick={() => setSelectedShipment({ order: o, address: addr, items: ms })} className="border-b border-gray-50 last:border-0 cursor-pointer hover:bg-blue-50/30">
-                        <td className="px-5 py-3 text-gray-500">#{o.order_number}</td>
+                        <td className="px-5 py-3 text-gray-500">
+                          #{o.order_number}
+                          {eventNameOf(o) && <div className="text-xs text-gray-900 font-medium max-w-[160px] truncate" title={o.event_name}>{o.event_name}</div>}
+                        </td>
                         <td className="px-5 py-3 text-gray-900">{orderTypeLabel(o)}</td>
                         <td className="px-5 py-3 text-gray-700 text-xs truncate max-w-[200px]">
                           {addr ? (addr.label || [addr.city, addr.country].filter(Boolean).join(', ')) : '—'}
@@ -1177,8 +1212,8 @@ function RequestDetail({ request, items, onClose }) {
       <div className="w-full max-w-2xl bg-white h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
-            <div className="text-xs text-gray-500">Shipment request</div>
-            <h2 className="text-lg font-semibold text-gray-900">{request.ship_to_name || 'Request'}</h2>
+            <div className="text-xs text-gray-500">Shipment request{eventNameOf(request) && request.ship_to_name ? ` · ${request.ship_to_name}` : ''}</div>
+            <h2 className="text-lg font-semibold text-gray-900">{eventNameOf(request) || request.ship_to_name || 'Request'}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
@@ -1239,6 +1274,8 @@ function RequestDetail({ request, items, onClose }) {
               </div>
             </div>
           )}
+
+          <ReturnBlock x={request} />
 
           {request.notes && (
             <div>

@@ -30,7 +30,7 @@ export default function MemberOrdersModal({ company, member, team = [], onClose 
     setData(null)
     ;(async () => {
       let q = supabase.from('warehouse_requests')
-        .select('id, created_at, status, request_type, requested_by_contact_id, ship_to_name, ship_to_city, ship_to_country, quoted_price_cents, return_requested, fulfilled_by_order_id, notes')
+        .select('id, created_at, status, request_type, requested_by_contact_id, ship_to_name, ship_to_city, ship_to_country, quoted_price_cents, return_requested, fulfilled_by_order_id, notes, event_name')
         .eq('company_id', company.id).in('requested_by_contact_id', people.map((p) => p.id))
         .order('created_at', { ascending: false })
       if (period !== 'all') q = q.gte('created_at', new Date(Date.now() - Number(period) * 86400000).toISOString())
@@ -149,6 +149,7 @@ export default function MemberOrdersModal({ company, member, team = [], onClose 
                         <div className="flex items-center gap-2 flex-wrap text-sm">
                           <span className="font-medium text-gray-900">{formatDate(r.created_at)}</span>
                           <StatusBadge status={r.status} />
+                          {r.event_name && <span className="text-xs font-medium text-gray-900">{r.event_name}</span>}
                           {scope === 'department' && <span className="text-xs text-gray-500">by {nameById[r.requested_by_contact_id] || '—'}</span>}
                           <span className="text-xs text-gray-500 truncate">→ {[r.ship_to_name, r.ship_to_city, r.ship_to_country].filter(Boolean).join(', ') || '—'}</span>
                           {r.quoted_price_cents != null && <span className="ml-auto text-xs text-gray-600">{formatCents(r.quoted_price_cents)} shipping</span>}

@@ -360,7 +360,12 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
   const [vatInclusive, setVatInclusive] = useState(true)
   const [shipConfig, setShipConfig] = useState(null) // editable boxes / services / country rates
   // Optional return pick-up, booked together with the outbound shipment (address step)
-  const [returnEnabled, setReturnEnabled] = useState(false)
+  // FB-191 / Qonto (26 Nov 2026): event name on the shipment, and "What comes back?"
+  // (none | all | some). Anything but "none" books the return pick-up below.
+  const [eventName, setEventName] = useState('')
+  const [returnChoice, setReturnChoice] = useState('none')
+  const [returnItemsNote, setReturnItemsNote] = useState('')
+  const returnEnabled = returnChoice !== 'none'
   const [returnDate, setReturnDate] = useState('')
   const [returnSamePlace, setReturnSamePlace] = useState(true) // pick up where we delivered
   const [returnAddress, setReturnAddress] = useState(null) // other pick-up address (full row)
@@ -432,6 +437,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     if (step === 1) {
       if (addressIds.length === 0) return false
       if (returnEnabled && (!returnDate || (!returnSamePlace && !returnAddress))) return false
+      if (returnChoice === 'some' && !returnItemsNote.trim()) return false
       // Every selected destination needs name + phone + email so the carrier
       // can call AND email the recipient when the parcel is on the way.
       return addresses.length === addressIds.length && addresses.every((a) =>
@@ -538,6 +544,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
     const returnNote = returnEnabled
       ? [
           `RETURN SHIPMENT — pick-up date: ${returnDate}`,
+          returnChoice === 'some' ? `What comes back: some items — ${returnItemsNote.trim()}` : 'What comes back: all items',
           returnSamePlace || !returnAddress
             ? 'Pick-up from: same as delivery address'
             : `Pick-up from: ${[returnAddress.label, addressLine(returnAddress)].filter(Boolean).join(' — ')}\nPick-up contact: ${[returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ')}`,
@@ -552,11 +559,13 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
       ? {
           return_requested: true,
           return_pickup_date: returnDate,
+          return_expected: returnChoice,
+          return_items_note: returnChoice === 'some' ? returnItemsNote.trim() : null,
           // null address = pick up at the delivery address
           return_pickup_address: otherPickup ? [returnAddress.label, addressLine(returnAddress)].filter(Boolean).join(' — ') : null,
           return_pickup_contact: otherPickup ? [returnAddress.contact_name, returnAddress.contact_phone, returnAddress.contact_email].filter(Boolean).join(' · ') : null,
         }
-      : {}
+      : { return_expected: 'none' }
     const requests = []
     for (const p of perAddress) {
       const addr = p.addr
@@ -580,6 +589,7 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
         ship_asap: shipAsap,
         shipping_speed: opt?.id || null,
         notes: fullNotes,
+        event_name: eventName.trim() || null,
         // Locked-in shipping quote from the calculator
         quoted_price_cents: priceCents,
         quoted_price_includes_vat: !!vatInclusive,
@@ -729,27 +739,49 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-xs text-gray-500">Pick the delivery destination. It needs a recipient we can contact if the carrier has questions.</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Event name <span className="font-normal text-gray-400">(optional)</span></label>
+                <input
+                  type="text"
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="e.g. Shared Plates Dinner"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+                <div className="text-[11px] text-gray-500 mt-1">We write it on every box and use it in every update about this shipment.</div>
+              </div>
+
               <AddressPicker company={company} selectedIds={addressIds} onChange={setAddressIds} />
 
               <div className={`rounded-lg border transition-colors ${returnEnabled ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'}`}>
-                <label className="flex items-start gap-3 px-4 py-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={returnEnabled}
-                    onChange={(e) => setReturnEnabled(e.target.checked)}
-                    className="accent-blue-600 mt-0.5"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />Add a return shipment</span>
-                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                        Separate cost · quoted separately
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">We'll collect the items again and bring them back to the warehouse.</div>
-                    <div className="text-xs text-amber-800 mt-0.5">The return is not included in the shipping total below. We send you a separate quote for it.</div>
+                <div className="px-4 py-3">
+                  <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><Undo2 size={13} className="text-blue-600" />What comes back after the event?</div>
+                  <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="What comes back after the event?">
+                    {[['none', 'Nothing'], ['all', 'All items'], ['some', 'Some items']].map(([v, l]) => (
+                      <label key={v} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${returnChoice === v ? 'border-blue-500 bg-white text-blue-900' : 'border-gray-200 text-gray-700 hover:border-gray-300 bg-white'}`}>
+                        <input type="radio" name="return-choice" className="accent-blue-600" checked={returnChoice === v} onChange={() => setReturnChoice(v)} />
+                        {l}
+                      </label>
+                    ))}
                   </div>
-                </label>
+                  {returnChoice === 'some' && (
+                    <input
+                      type="text"
+                      value={returnItemsNote}
+                      onChange={(e) => setReturnItemsNote(e.target.value)}
+                      placeholder="Which items come back? e.g. the roll-up banner and the fortune wheel"
+                      className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  )}
+                  {returnEnabled ? (
+                    <div className="text-xs text-amber-800 mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Separate cost · quoted separately</span>
+                      We collect it and bring it back to the warehouse. The return is not included in the shipping total.
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500 mt-2">Everything stays at the destination. No pick-up is booked.</div>
+                  )}
+                </div>
 
                 {returnEnabled && (
                   <div className="px-4 pb-4 pt-3 border-t border-blue-200 space-y-3">
@@ -1003,9 +1035,24 @@ export default function RequestShipmentWizard({ company, contact, onClose, onCre
                   </div>
                 </div>
 
+                {eventName.trim() && (
+                  <div className="pt-3 border-t border-gray-200 text-xs">
+                    <div className="text-gray-500">Event</div>
+                    <div className="text-gray-900 font-medium">{eventName.trim()}</div>
+                  </div>
+                )}
+
+                {!returnEnabled && (
+                  <div className="pt-3 border-t border-gray-200 text-xs">
+                    <div className="text-gray-500">What comes back</div>
+                    <div className="text-gray-900 font-medium">Nothing</div>
+                  </div>
+                )}
+
                 {returnEnabled && (
                   <div className="pt-3 border-t border-gray-200 text-xs">
                     <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1"><Undo2 size={11} />Return shipment</div>
+                    <div className="text-gray-900 font-medium mb-2">{returnChoice === 'some' ? `Some items come back: ${returnItemsNote.trim()}` : 'All items come back'}</div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <div className="text-gray-500">Pick-up date</div>
