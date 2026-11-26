@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Upload, FileText, Trash2, Pencil, X, Check, Tag } from 'lucide-react'
+import { Upload, FileText, Trash2, Pencil, X, Check, Tag, Type, ExternalLink } from 'lucide-react'
 import { formatDate, PrimaryButton, SecondaryButton, Badge } from './ui'
+import VectorBadge from './VectorBadge'
+import { classifyVectorFile } from '../lib/vectorFile'
 
 const ASSET_TYPES = ['logo', 'font', 'guidelines', 'photo', 'other']
+// FB-187 (Merel): a font can be just its name (+ a link) — no file to upload.
+const isFontByName = (a) => a?.asset_type === 'font' && !a?.storage_path
+// A link the customer typed: only http(s), so a "javascript:" link can't sneak in.
+const safeLink = (u) => (/^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : null)
+const withScheme = (u) => { const t = String(u || '').trim(); return !t ? null : /^https?:\/\//i.test(t) ? t : `https://${t}` }
 
 // --- Reusable chip input for labels ---
 function LabelInput({ value, onChange, placeholder = 'Add label…' }) {
@@ -43,8 +50,11 @@ function LabelInput({ value, onChange, placeholder = 'Add label…' }) {
 
 // --- Edit modal ---
 function EditModal({ asset, onClose, onSaved }) {
+  const byName = isFontByName(asset)
   const [name, setName] = useState(asset.name || asset.file_name || '')
   const [assetType, setAssetType] = useState(asset.asset_type || 'other')
+  const [link, setLink] = useState(asset.link_url || '')
+  const [note, setNote] = useState(asset.description || '')
   const [labels, setLabels] = useState(asset.labels || [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -53,7 +63,9 @@ function EditModal({ asset, onClose, onSaved }) {
     setBusy(true); setError(null)
     const { error: err } = await supabase
       .from('brand_assets')
-      .update({ name: name.trim() || asset.file_name, asset_type: assetType, labels })
+      .update(byName
+        ? { name: name.trim() || asset.name, labels, link_url: withScheme(link), description: note.trim() || null }
+        : { name: name.trim() || asset.file_name, asset_type: assetType, labels })
       .eq('id', asset.id)
     setBusy(false)
     if (err) { setError(err.message); return }
@@ -64,7 +76,7 @@ function EditModal({ asset, onClose, onSaved }) {
     <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="w-full max-w-md bg-white rounded-xl shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">Edit asset</h3>
+          <h3 className="text-base font-semibold text-gray-900">{byName ? 'Edit font' : 'Edit asset'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3">
@@ -77,6 +89,18 @@ function EditModal({ asset, onClose, onSaved }) {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {byName ? (<>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Link (optional)</label>
+              <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fonts.google.com/specimen/Inter"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. headings only"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </>) : (
           <div>
             <label className="block text-xs text-gray-500 mb-1">Type</label>
             <select
@@ -87,6 +111,7 @@ function EditModal({ asset, onClose, onSaved }) {
               {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+          )}
           <div>
             <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Tag size={11} />Labels</label>
             <LabelInput value={labels} onChange={setLabels} />
@@ -113,12 +138,16 @@ export default function BrandAssetsSection({ company, contact }) {
   const [editing, setEditing] = useState(null)
   const [labelFilter, setLabelFilter] = useState(null)
   const fileRef = useRef(null)
+  // FB-187: "Add font by name" form
+  const [fontOpen, setFontOpen] = useState(false)
+  const [font, setFont] = useState({ name: '', link: '', note: '' })
+  const [savingFont, setSavingFont] = useState(false)
 
   const loadAssets = async () => {
     setLoading(true)
     const { data } = await supabase
       .from('brand_assets')
-      .select('id, asset_type, name, file_name, mime_type, file_size, storage_path, labels, created_at')
+      .select('id, asset_type, name, description, file_name, mime_type, file_size, storage_path, labels, created_at, is_vector, link_url')
       .eq('company_id', company.id)
       .order('created_at', { ascending: false })
     setAssets(data ?? [])
@@ -142,6 +171,7 @@ export default function BrandAssetsSection({ company, contact }) {
       upsert: false,
     })
     if (upErr) { setError(upErr.message); setUploading(false); return }
+    const { is_vector } = await classifyVectorFile(file) // FB-186
 
     const { error: insErr } = await supabase.from('brand_assets').insert({
       company_id: company.id,
@@ -151,6 +181,7 @@ export default function BrandAssetsSection({ company, contact }) {
       mime_type: file.type,
       file_size: file.size,
       storage_path: path,
+      is_vector,
       uploaded_by: null,
       portal_visible: true,
       labels: draftLabels,
@@ -162,10 +193,26 @@ export default function BrandAssetsSection({ company, contact }) {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  // FB-187: add a font by its name (e.g. "Inter Bold"), with an optional link and note.
+  const addFont = async () => {
+    const name = font.name.trim()
+    if (!name || !contact) return
+    setSavingFont(true); setError(null)
+    const { error: insErr } = await supabase.from('brand_assets').insert({
+      company_id: company.id, asset_type: 'font', name,
+      link_url: withScheme(font.link), description: font.note.trim() || null,
+      file_name: null, storage_path: null, uploaded_by: null, portal_visible: true, labels: draftLabels,
+    })
+    setSavingFont(false)
+    if (insErr) { setError(insErr.message); return }
+    setFont({ name: '', link: '', note: '' }); setFontOpen(false); setDraftLabels([])
+    await loadAssets()
+  }
+
   const deleteAsset = async (asset) => {
     setError(null)
     // Storage first, then DB row. If storage fails we still try DB so orphans don't accumulate.
-    await supabase.storage.from('brand-assets').remove([asset.storage_path])
+    if (asset.storage_path) await supabase.storage.from('brand-assets').remove([asset.storage_path])
     const { error: err } = await supabase.from('brand_assets').delete().eq('id', asset.id)
     if (err) { setError(err.message); return }
     await loadAssets()
@@ -196,6 +243,11 @@ export default function BrandAssetsSection({ company, contact }) {
             >
               {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
+            <button type="button" onClick={() => setFontOpen((v) => !v)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50"
+              title="No font file? Add the font by its name">
+              <Type size={12} />Add font by name
+            </button>
             <label className={`inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-700 ${uploading ? 'opacity-50' : ''}`}>
               <Upload size={12} />{uploading ? 'Uploading…' : 'Upload'}
               <input
@@ -208,6 +260,24 @@ export default function BrandAssetsSection({ company, contact }) {
             </label>
           </div>
         </div>
+        {fontOpen && (
+          <div className="border border-gray-200 rounded-lg bg-white p-2.5 space-y-2">
+            <div className="text-xs font-semibold text-gray-700">Add a font by name</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input type="text" value={font.name} onChange={(e) => setFont({ ...font, name: e.target.value })} placeholder="Font name, e.g. Inter Bold" autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') addFont() }}
+                className="text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="url" value={font.link} onChange={(e) => setFont({ ...font, link: e.target.value })} placeholder="Link (optional) — Google Fonts / Adobe"
+                className="text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="text" value={font.note} onChange={(e) => setFont({ ...font, note: e.target.value })} placeholder="Note (optional), e.g. headings only"
+                className="text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <SecondaryButton onClick={() => { setFontOpen(false); setFont({ name: '', link: '', note: '' }) }} disabled={savingFont}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={addFont} disabled={savingFont || !font.name.trim()}><Check size={14} />{savingFont ? 'Adding…' : 'Add font'}</PrimaryButton>
+            </div>
+          </div>
+        )}
         <LabelInput value={draftLabels} onChange={setDraftLabels} placeholder="Add labels for the next upload (optional)…" />
       </div>
 
@@ -277,22 +347,30 @@ export default function BrandAssetsSection({ company, contact }) {
 
 function AssetTile({ asset, signedUrl, isImage, onEdit, onDelete }) {
   const [url, setUrl] = useState(null)
+  const byName = isFontByName(asset)
   useEffect(() => {
     let cancelled = false
+    if (!asset.storage_path) { setUrl(safeLink(asset.link_url)); return }
     signedUrl(asset.storage_path).then((u) => { if (!cancelled) setUrl(u) })
     return () => { cancelled = true }
-  }, [asset.storage_path])
+  }, [asset.storage_path, asset.link_url])
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors bg-white group relative">
       <a
-        href={url || '#'}
+        href={url || undefined}
         target="_blank"
         rel="noreferrer"
         className="block"
+        onClick={(e) => { if (!url) e.preventDefault() }}
       >
         <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
-          {isImage(asset.mime_type) && url ? (
+          {byName ? (
+            <div className="flex flex-col items-center gap-1 px-2 text-center">
+              <span className="text-3xl font-semibold text-gray-400" aria-hidden>Aa</span>
+              {url && <span className="text-[10px] text-blue-600 inline-flex items-center gap-0.5"><ExternalLink size={10} />Open link</span>}
+            </div>
+          ) : isImage(asset.mime_type) && url ? (
             <img src={url} alt={asset.name} className="w-full h-full object-contain" />
           ) : (
             <FileText size={24} className="text-gray-300" />
@@ -301,7 +379,9 @@ function AssetTile({ asset, signedUrl, isImage, onEdit, onDelete }) {
       </a>
       <div className="p-2">
         <div className="text-xs font-medium text-gray-900 truncate">{asset.name}</div>
-        <div className="text-[10px] text-gray-400 truncate">{asset.asset_type} · {formatDate(asset.created_at)}</div>
+        <div className="text-[10px] text-gray-400 truncate">{byName ? 'font · by name' : asset.asset_type} · {formatDate(asset.created_at)}</div>
+        {byName && asset.description && <div className="text-[10px] text-gray-500 truncate" title={asset.description}>{asset.description}</div>}
+        {asset.asset_type === 'logo' && <VectorBadge isVector={asset.is_vector} name={asset.file_name} short className="mt-1" />}
         {(asset.labels || []).length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {asset.labels.map((l) => (

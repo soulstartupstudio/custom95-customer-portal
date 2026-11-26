@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { X, Palette, Upload, Check, Image as ImageIcon } from 'lucide-react'
 import { PrimaryButton, SecondaryButton } from './ui'
 import { appendCustomerBrief } from '../lib/customerBrief'
+import VectorBadge from './VectorBadge'
+import { classifyVectorFile } from '../lib/vectorFile'
 
 // Shown immediately after a customer approves their quote. Captures ONE combined
 // design brief (how they want it to look) plus an optional logo/asset upload, and
@@ -48,10 +50,11 @@ export default function DesignBriefModal({ proposalId, company, contact, onClose
         const path = `${company.id}/${crypto.randomUUID()}.${ext}`
         const { error: upErr } = await supabase.storage.from('brand-assets').upload(path, file, { contentType: file.type })
         if (upErr) throw upErr
+        const { is_vector } = await classifyVectorFile(file) // FB-186
         const { data: asset, error: insErr } = await supabase.from('brand_assets').insert({
           company_id: company.id, asset_type: 'logo',
           name: file.name, file_name: file.name, mime_type: file.type, file_size: file.size,
-          storage_path: path, portal_visible: true,
+          storage_path: path, portal_visible: true, is_vector,
         }).select('id').single()
         if (insErr) throw insErr
         brandAssetId = asset?.id || null
@@ -127,6 +130,7 @@ export default function DesignBriefModal({ proposalId, company, contact, onClose
                   <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                     <ImageIcon size={14} />
                     <span className="truncate flex-1">{file.name}</span>
+                    <VectorBadge name={file.name} short />
                     <button onClick={() => setFile(null)} className="text-gray-400 hover:text-red-600"><X size={14} /></button>
                   </div>
                 ) : (

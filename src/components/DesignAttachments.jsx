@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Paperclip, Plus, X, Upload, FileText, Check } from 'lucide-react'
+import VectorBadge from './VectorBadge'
+import { classifyVectorFile } from '../lib/vectorFile'
 
 /**
  * Shows brand assets attached to a specific design_task.
@@ -17,6 +19,7 @@ export default function DesignAttachments({ design, company, contact, readOnly =
   const [error, setError] = useState(null)
 
   const signedUrl = async (path) => {
+    if (!path) return null // FB-187: a font added by name has no file
     const { data } = await supabase.storage.from('brand-assets').createSignedUrl(path, 60 * 60)
     return data?.signedUrl || null
   }
@@ -24,7 +27,7 @@ export default function DesignAttachments({ design, company, contact, readOnly =
   const loadAttached = async () => {
     const { data } = await supabase
       .from('design_task_assets')
-      .select('id, brand_asset_id, brand_assets(id, name, asset_type, mime_type, storage_path)')
+      .select('id, brand_asset_id, brand_assets(id, name, asset_type, mime_type, storage_path, file_name, is_vector)')
       .eq('design_task_id', design.id)
     const rows = data ?? []
     const withUrls = await Promise.all(
@@ -36,7 +39,7 @@ export default function DesignAttachments({ design, company, contact, readOnly =
   const loadLibrary = async () => {
     const { data } = await supabase
       .from('brand_assets')
-      .select('id, name, asset_type, mime_type, storage_path, created_at')
+      .select('id, name, asset_type, mime_type, storage_path, created_at, file_name, is_vector')
       .eq('company_id', company.id)
       .order('created_at', { ascending: false })
     const rows = data ?? []
@@ -82,11 +85,12 @@ export default function DesignAttachments({ design, company, contact, readOnly =
     const path = `${company.id}/${crypto.randomUUID()}.${ext}`
     const { error: upErr } = await supabase.storage.from('brand-assets').upload(path, file, { contentType: file.type })
     if (upErr) { setError(upErr.message); setUploading(false); return }
+    const { is_vector } = await classifyVectorFile(file) // FB-186
     const { data: inserted, error: insErr } = await supabase.from('brand_assets').insert({
       company_id: company.id,
       asset_type: 'other',
       name: file.name, file_name: file.name, mime_type: file.type, file_size: file.size,
-      storage_path: path, portal_visible: true,
+      storage_path: path, portal_visible: true, is_vector,
     }).select().single()
     if (insErr) { setError(insErr.message); setUploading(false); return }
     await loadLibrary()
@@ -137,7 +141,8 @@ export default function DesignAttachments({ design, company, contact, readOnly =
                     <FileText size={16} className="text-gray-300" />
                   )}
                 </div>
-                <div className="px-1.5 py-1 text-[10px] text-gray-700 truncate bg-white">{ba.name}</div>
+                <div className="px-1.5 py-1 text-[10px] text-gray-700 truncate bg-white">{ba.storage_path ? ba.name : `Font: ${ba.name}`}</div>
+                {['logo', 'other'].includes(ba.asset_type) && <div className="px-1.5 pb-1 bg-white"><VectorBadge isVector={ba.is_vector} name={ba.file_name} size="xs" short /></div>}
                 {!readOnly && (
                   <button
                     onClick={() => detach(a.id)}
@@ -188,7 +193,8 @@ export default function DesignAttachments({ design, company, contact, readOnly =
                         <FileText size={16} className="text-gray-300" />
                       )}
                     </div>
-                    <div className="px-1.5 py-1 text-[10px] text-gray-700 truncate">{l.name}</div>
+                    <div className="px-1.5 py-1 text-[10px] text-gray-700 truncate">{l.storage_path ? l.name : `Font: ${l.name}`}</div>
+                    {['logo', 'other'].includes(l.asset_type) && <div className="px-1.5 pb-1"><VectorBadge isVector={l.is_vector} name={l.file_name} size="xs" short /></div>}
                   </button>
                 )
               })}
