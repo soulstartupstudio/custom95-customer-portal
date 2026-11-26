@@ -5,7 +5,7 @@ import { formatDate, PrimaryButton, SecondaryButton, Badge } from './ui'
 import VectorBadge from './VectorBadge'
 import { classifyVectorFile } from '../lib/vectorFile'
 
-const ASSET_TYPES = ['logo', 'font', 'guidelines', 'photo', 'other']
+const ASSET_TYPES = ['logo', 'font', 'brand_guidelines', 'photo', 'other']  // must match the asset_type enum (was 'guidelines' → upload failed)
 // FB-187 (Merel): a font can be just its name (+ a link) — no file to upload.
 const isFontByName = (a) => a?.asset_type === 'font' && !a?.storage_path
 // A link the customer typed: only http(s), so a "javascript:" link can't sneak in.
@@ -108,7 +108,7 @@ function EditModal({ asset, onClose, onSaved }) {
               onChange={(e) => setAssetType(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {ASSET_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
             </select>
           </div>
           )}
@@ -241,7 +241,7 @@ export default function BrandAssetsSection({ company, contact }) {
               onChange={(e) => setAssetType(e.target.value)}
               className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {ASSET_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
             </select>
             <button type="button" onClick={() => setFontOpen((v) => !v)}
               className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50"
